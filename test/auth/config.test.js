@@ -60,3 +60,14 @@ test('config tolera BOM do Bloco de Notas e URL com /rest/v1/', () => {
   const c = loadConfig({ env: {}, fs: fakeFs, dir: '/x', warn: () => {} });
   require('node:assert').deepStrictEqual(c, { supabaseUrl: 'https://abcxyz.supabase.co', anonKey: 'eyJabc.def.ghi' });
 });
+
+test('sem config.local.json usa config.public.json (instalador)', () => {
+  const { loadConfig } = require('../../src/main/config');
+  const body = JSON.stringify({ supabaseUrl: 'https://abcxyz.supabase.co', anonKey: 'eyJabc.def.ghi' });
+  const fakeFs = {
+    statSync: (p) => { if (p.endsWith('config.local.json')) throw new Error('ENOENT'); return { isFile: () => true, size: body.length }; },
+    readFileSync: (p) => { if (!p.endsWith('config.public.json')) throw new Error('arquivo errado'); return body; },
+  };
+  require('node:assert').deepStrictEqual(loadConfig({ env: {}, fs: fakeFs, dir: '/x', warn: () => {} }),
+    { supabaseUrl: 'https://abcxyz.supabase.co', anonKey: 'eyJabc.def.ghi' });
+});

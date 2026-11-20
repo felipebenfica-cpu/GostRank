@@ -1,0 +1,46 @@
+name: Gerar .exe para Windows
+
+# Gera o Ghost Rank portátil (.exe) e publica em "Releases".
+# Roda sozinho a cada push no ramo de teste e também pelo botão "Run workflow".
+on:
+  push:
+    branches: [etapa-2-grupo-voz, main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm test
+        continue-on-error: true  # os testes oficiais rodam no Linux (ci.yml)
+      - name: Gerar o .exe
+        run: npx electron-builder --win portable --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Publicar em Releases (substitui a versão de teste anterior)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF: ${{ github.ref_name }}
+        run: |
+          TAG="teste-${REF//\//-}"
+          gh release delete "$TAG" --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
+          gh release create "$TAG" dist/*.exe --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --latest \
+            --title "Ghost Rank (teste) - $REF" \
+            --notes "Baixe o arquivo .exe abaixo e abra com dois cliques. O Windows pode avisar 'O Windows protegeu o computador': clique em 'Mais informações' e depois em 'Executar assim mesmo'."

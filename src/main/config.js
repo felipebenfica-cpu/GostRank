@@ -33,14 +33,17 @@ function loadConfig({ env = process.env, fs = nodeFs, dir = path.join(__dirname,
     const needFile = !(env && env.GHOST_RANK_SUPABASE_URL && env.GHOST_RANK_SUPABASE_ANON_KEY);
     if (needFile) {
       try {
-        const p = path.join(dir, 'config.local.json');
+        // config.local.json (da máquina) tem prioridade; config.public.json vem junto no instalador.
+        const local = path.join(dir, 'config.local.json');
+        let p = local;
+        try { fs.statSync(local); } catch { p = path.join(dir, 'config.public.json'); }
         let st = null;
-        try { st = fs.statSync(p); } catch { warn('[config] config.local.json não encontrado em ' + dir); }
+        try { st = fs.statSync(p); } catch { warn('[config] config.local.json/config.public.json não encontrado em ' + dir); }
         if (st && st.isFile() && st.size <= MAX_CONFIG_BYTES) {
           // O Bloco de Notas pode salvar com BOM (\uFEFF), que quebra o JSON.parse.
           const text = fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '');
           let parsed = null;
-          try { parsed = JSON.parse(text); } catch { warn('[config] config.local.json não é um JSON válido'); }
+          try { parsed = JSON.parse(text); } catch { warn('[config] ' + path.basename(p) + ' não é um JSON válido'); }
           if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) file = parsed;
         }
       } catch { file = {}; }

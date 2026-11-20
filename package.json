@@ -1,13 +1,14 @@
 {
   "name": "ghost-rank",
   "version": "0.1.0",
-  "description": "Rastreador de MMR de Dota 2 (Etapa 0 - MVP)",
+  "description": "Ghost Rank: MMR de Dota 2, grupo, chat e voz",
   "private": true,
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
     "test": "node --test \"test/**/*.test.js\"",
-    "audit": "npm audit --audit-level=high"
+    "audit": "npm audit --audit-level=high",
+    "dist": "electron-builder --win portable --publish never"
   },
   "engines": {
     "node": ">=22"
@@ -16,6 +17,26 @@
     "livekit-client": "^2.15.0"
   },
   "devDependencies": {
-    "electron": "^45.3.3"
+    "electron": "^45.3.3",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.ghostrank.app",
+    "productName": "Ghost Rank",
+    "files": [
+      "src/**/*",
+      "config.public.json",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "artifactName": "GhostRank-${version}.exe"
+    },
+    "directories": {
+      "output": "dist"
+    }
   }
 }
