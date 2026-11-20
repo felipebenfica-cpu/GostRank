@@ -849,6 +849,28 @@ input[aria-invalid="true"] { border-color: var(--danger); }
   border-radius: var(--radius-sm);
 }
 .screen-tile.is-local { max-width: 20rem; }
+.screen-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.screen-media { cursor: zoom-in; }
+.screen-tile.is-local .screen-media { cursor: default; }
+/* Tela cheia do sistema e ampliada dentro da janela */
+.screen-tile:fullscreen,
+.screen-tile.is-expanded {
+  grid-template-rows: auto 1fr;
+  padding: var(--space-3);
+  background: #000;
+  border: 0;
+  border-radius: 0;
+}
+.screen-tile.is-expanded { position: fixed; inset: 0; z-index: 50; }
+.screen-tile:fullscreen .screen-media,
+.screen-tile.is-expanded .screen-media {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  min-height: 0;
+  border-radius: 0;
+  cursor: zoom-out;
+}
 .audio-sink { display: none; }
 
 /* Chat */

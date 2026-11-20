@@ -37,6 +37,8 @@
     mic: [['path', { d: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z' }], ['path', { d: 'M5 11a7 7 0 0 0 14 0' }], ['line', { x1: 12, y1: 18, x2: 12, y2: 21 }]],
     micOff: [['path', { d: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z' }], ['path', { d: 'M5 11a7 7 0 0 0 14 0' }], ['line', { x1: 12, y1: 18, x2: 12, y2: 21 }], ['line', { x1: 3, y1: 3, x2: 21, y2: 21 }]],
     speaking: [['path', { d: 'M11 5 6 9H3v6h3l5 4V5z' }], ['path', { d: 'M15.5 8.5a5 5 0 0 1 0 7' }], ['path', { d: 'M18.5 5.5a9 9 0 0 1 0 13' }]],
+    expand: [['path', { d: 'M4 9V4h5' }], ['path', { d: 'M20 9V4h-5' }], ['path', { d: 'M4 15v5h5' }], ['path', { d: 'M20 15v5h-5' }]],
+    shrink: [['path', { d: 'M9 4v5H4' }], ['path', { d: 'M15 4v5h5' }], ['path', { d: 'M9 20v-5H4' }], ['path', { d: 'M15 20v-5h5' }]],
     screen: [['rect', { x: 3, y: 4, width: 18, height: 12, rx: 2 }], ['line', { x1: 8, y1: 20, x2: 16, y2: 20 }], ['line', { x1: 12, y1: 16, x2: 12, y2: 20 }]],
     window: [['rect', { x: 3, y: 4, width: 18, height: 16, rx: 2 }], ['line', { x1: 3, y1: 9, x2: 21, y2: 9 }]]
   };
@@ -228,7 +230,17 @@
     if (media && media.classList) media.classList.add('screen-media');
     var cap = el('figcaption', 'screen-caption');
     cap.appendChild(icon('screen', 16));
-    cap.appendChild(el('span', null, isLocal ? 'Sua tela (prévia)' : 'Tela de ' + nameFor(participant)));
+    cap.appendChild(el('span', 'screen-name', isLocal ? 'Sua tela (prévia)' : 'Tela de ' + nameFor(participant)));
+    if (!isLocal) {
+      var big = el('button', 'btn btn-small screen-expand');
+      big.type = 'button';
+      big.setAttribute('aria-pressed', 'false');
+      big.appendChild(icon('expand', 16));
+      big.appendChild(el('span', null, 'Tela cheia'));
+      big.addEventListener('click', function () { toggleBig(fig); });
+      cap.appendChild(big);
+      if (media) media.addEventListener('dblclick', function () { toggleBig(fig); });
+    }
     fig.appendChild(cap);
     if (media) fig.appendChild(media);
     dom.screens.appendChild(fig);
@@ -236,6 +248,45 @@
     show(dom.screens, true);
     if (!isLocal) announce(nameFor(participant) + ' começou a compartilhar a tela.');
   }
+
+  /* Tela cheia: usa a tela cheia do sistema; se não der, amplia dentro da janela. */
+  function isBig(fig) { return document.fullscreenElement === fig || fig.classList.contains('is-expanded'); }
+
+  function syncBigButton(fig) {
+    var btn = fig.querySelector('.screen-expand');
+    if (!btn) return;
+    var on = isBig(fig);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.textContent = '';
+    btn.appendChild(icon(on ? 'shrink' : 'expand', 16));
+    btn.appendChild(el('span', null, on ? 'Sair da tela cheia' : 'Tela cheia'));
+  }
+
+  function toggleBig(fig) {
+    if (isBig(fig)) {
+      fig.classList.remove('is-expanded');
+      if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(function () {});
+      syncBigButton(fig);
+      return;
+    }
+    var expandInside = function () { fig.classList.add('is-expanded'); syncBigButton(fig); };
+    if (fig.requestFullscreen) {
+      fig.requestFullscreen({ navigationUI: 'hide' }).then(function () { syncBigButton(fig); }, expandInside);
+    } else {
+      expandInside();
+    }
+  }
+
+  document.addEventListener('fullscreenchange', function () {
+    Object.keys(screenTiles).forEach(function (sid) { syncBigButton(screenTiles[sid].fig); });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    Object.keys(screenTiles).forEach(function (sid) {
+      var f = screenTiles[sid].fig;
+      if (f.classList.contains('is-expanded')) { f.classList.remove('is-expanded'); syncBigButton(f); }
+    });
+  });
 
   function removeScreenTile(sid) {
     var tile = screenTiles[sid];
@@ -268,7 +319,11 @@
 
   function onTrackSubscribed(track, publication, participant) {
     if (kindOf(track) === 'audio') addAudio(track);
-    else if (kindOf(track) === 'video' && (sourceOf(publication) || sourceOf(track)) === 'screen_share') addScreenTile(track, participant, false);
+    else if (kindOf(track) === 'video' && (sourceOf(publication) || sourceOf(track)) === 'screen_share') {
+      // Sempre a melhor qualidade disponível da tela compartilhada.
+      try { if (publication && publication.setVideoQuality && LK.VideoQuality) publication.setVideoQuality(LK.VideoQuality.HIGH); } catch (e) { /* ignora */ }
+      addScreenTile(track, participant, false);
+    }
     renderParticipants();
   }
 
@@ -376,7 +431,7 @@
       }
       var r;
       try {
-        r = new LK.Room({ adaptiveStream: true, dynacast: true });
+        r = new LK.Room({ adaptiveStream: false, dynacast: true });
       } catch (e) {
         state = 'off';
         renderState();
@@ -526,14 +581,22 @@
       if (!r) { dom.dlgScreen.close(); return; }
       dom.dlgScreen.close();
       // Áudio do jogo sem processamento de voz (o Electron falha no loopback com ele ligado).
+      // Qualidade máxima: até 1440p a 30 quadros (limitado à resolução da tela escolhida).
+      var HIGH_RES = { width: 2560, height: 1440, frameRate: 30 };
+      var PUBLISH = {
+        screenShareEncoding: { maxBitrate: 8000000, maxFramerate: 30, priority: 'high' },
+        degradationPreference: 'maintain-resolution',
+      };
       var withAudio = {
         audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
         systemAudio: 'include',
         selfBrowserSurface: 'exclude',
+        resolution: HIGH_RES,
+        contentHint: 'detail',
       };
       var noAudio = false;
       return Promise.resolve()
-        .then(function () { return r.localParticipant.setScreenShareEnabled(true, withAudio); })
+        .then(function () { return r.localParticipant.setScreenShareEnabled(true, withAudio, PUBLISH); })
         .catch(function (err) {
           var n = err && err.name;
           if (n !== 'NotReadableError' && n !== 'AbortError' && n !== 'NotSupportedError') throw err;
@@ -541,7 +604,7 @@
           noAudio = true;
           return call(function () { return bridge.pickScreenSource(source.id); }).then(function (res2) {
             if (!res2 || !res2.ok) throw err;
-            return r.localParticipant.setScreenShareEnabled(true, { audio: false, selfBrowserSurface: 'exclude' });
+            return r.localParticipant.setScreenShareEnabled(true, { audio: false, selfBrowserSurface: 'exclude', resolution: HIGH_RES, contentHint: 'detail' }, PUBLISH);
           });
         })
         .then(function () {

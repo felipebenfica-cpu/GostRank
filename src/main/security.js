@@ -52,7 +52,7 @@ function decidePermissionRequest(permission, details) {
     const types = d.mediaTypes;
     return Array.isArray(types) && types.length > 0 && types.every((t) => t === 'audio');
   }
-  return permission === 'display-capture';
+  return permission === 'display-capture' || permission === 'fullscreen';
 }
 
 /** Verificação de permissão coerente com o pedido acima. */
@@ -61,7 +61,7 @@ function decidePermissionCheck(permission, requestingOrigin, details) {
   const origin = typeof requestingOrigin === 'string' && requestingOrigin ? requestingOrigin : d.securityOrigin;
   if (!isAppOrigin(origin)) return false;
   if (permission === 'media') return d.mediaType === 'audio';
-  return permission === 'display-capture';
+  return permission === 'display-capture' || permission === 'fullscreen';
 }
 
 function sourceKind(id) {
