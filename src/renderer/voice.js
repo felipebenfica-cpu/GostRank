@@ -5,6 +5,17 @@
 (function () {
   'use strict';
 
+  // Detalhe técnico curto do erro (sem tokens) para diagnóstico.
+  function techDetail(err) {
+    if (!err) return '';
+    var msg = String((err && (err.message || err.reason)) || err);
+    msg = msg.replace(/[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[token]')
+      .replace(/access_token=[^&\s]+/g, 'access_token=[token]');
+    if (msg.length > 180) msg = msg.slice(0, 180) + '…';
+    var name = err && err.name ? String(err.name) + ': ' : '';
+    return ' (Detalhe: ' + name + msg + ')';
+  }
+
   function $(id) { return document.getElementById(id); }
 
   var bridge = null;
@@ -387,7 +398,7 @@
           setError(mediaErrorMessage(err, 'mic'));
         });
       });
-    }).catch(function () {
+    }).catch(function (err) {
       var r = room;
       room = null;
       roomGroupId = null;
@@ -395,7 +406,7 @@
       if (r) { leavingOnPurpose = true; try { r.disconnect(); } catch (e) { /* ignora */ } }
       cleanupMedia();
       renderState();
-      setError('Não deu para conectar à sala de voz. Verifique a internet e tente de novo.');
+      setError('Não deu para conectar à sala de voz. Verifique a internet e tente de novo.' + techDetail(err));
       dom.join.focus();
     });
   }
