@@ -525,17 +525,35 @@
       var r = room;
       if (!r) { dom.dlgScreen.close(); return; }
       dom.dlgScreen.close();
+      // Áudio do jogo sem processamento de voz (o Electron falha no loopback com ele ligado).
+      var withAudio = {
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        systemAudio: 'include',
+        selfBrowserSurface: 'exclude',
+      };
+      var noAudio = false;
       return Promise.resolve()
-        .then(function () { return r.localParticipant.setScreenShareEnabled(true, { audio: true, systemAudio: 'include' }); })
+        .then(function () { return r.localParticipant.setScreenShareEnabled(true, withAudio); })
+        .catch(function (err) {
+          var n = err && err.name;
+          if (n !== 'NotReadableError' && n !== 'AbortError' && n !== 'NotSupportedError') throw err;
+          // Tenta de novo só com a imagem (a escolha da tela é de uso único).
+          noAudio = true;
+          return call(function () { return bridge.pickScreenSource(source.id); }).then(function (res2) {
+            if (!res2 || !res2.ok) throw err;
+            return r.localParticipant.setScreenShareEnabled(true, { audio: false, selfBrowserSurface: 'exclude' });
+          });
+        })
         .then(function () {
           enable();
           renderState();
+          if (noAudio) setError('Compartilhando só a imagem: o som do jogo não pôde ser capturado neste computador.');
           announce('Você está compartilhando a tela.');
           dom.share.focus();
         }, function (err) {
           enable();
           renderState();
-          setError(mediaErrorMessage(err, 'screen'));
+          setError(mediaErrorMessage(err, 'screen') + techDetail(err));
           dom.share.focus();
         });
     });

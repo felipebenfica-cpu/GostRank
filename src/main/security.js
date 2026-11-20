@@ -139,7 +139,8 @@ function createDisplayMediaHandler({ picker, desktopCapturer, platform = process
       const src = Array.isArray(sources) ? sources.find((s) => s && s.id === id) : null;
       if (!src) return callback({});
       const streams = { video: src };
-      if (platform === 'win32') streams.audio = 'loopback';
+      // Áudio do sistema só quando a tela pediu áudio (Windows).
+      if (platform === 'win32' && r.audioRequested !== false) streams.audio = 'loopback';
       return callback(streams);
     } catch {
       return callback({});
