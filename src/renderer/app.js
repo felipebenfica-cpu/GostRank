@@ -54,7 +54,12 @@
     settingsError: $('settings-error'),
     dlgReset: $('dlg-reset'),
     formReset: $('form-reset'),
-    resetError: $('reset-error')
+    resetError: $('reset-error'),
+    accountBar: $('account-bar'),
+    accountNote: $('account-unconfigured'),
+    btnSignin: $('btn-signin'),
+    btnAccount: $('btn-account'),
+    accountName: $('account-name')
   };
 
   /* ---------- utilidades ---------- */
@@ -170,6 +175,7 @@
     show(els.dash, configured);
 
     if (configured && view.summary) renderDashboard();
+    renderAccount();
     updateTimers();
   }
 
@@ -546,6 +552,300 @@
         clearInvalid();
         setMessage(els.actionMessage, '');
         els.setupAccount.focus();
+      }
+    });
+  });
+
+  /* ---------- conta ---------- */
+
+  function authInfo() {
+    var a = view && view.auth;
+    return a && typeof a === 'object' ? a : null;
+  }
+
+  function accountLabel(a) {
+    return (a && (a.displayName || a.email)) || 'Minha conta';
+  }
+
+  function renderAccount() {
+    var a = authInfo();
+    show(els.accountBar, !!a);
+    if (!a) return;
+    show(els.accountNote, a.status === 'unconfigured');
+    show(els.btnSignin, a.status === 'signed_out');
+    var signedIn = a.status === 'signed_in';
+    show(els.btnAccount, signedIn);
+    if (signedIn) {
+      var name = accountLabel(a);
+      els.accountName.textContent = name;
+      els.btnAccount.setAttribute('aria-label', 'Minha conta, ' + name);
+      els.btnAccount.title = name;
+    }
+  }
+
+  var ac = {
+    signin: { dlg: $('dlg-signin'), form: $('form-signin'), email: $('signin-email'), pw: $('signin-password'), error: $('signin-error'), submit: $('signin-submit'), label: 'Entrar', busy: 'Entrando…' },
+    signup: { dlg: $('dlg-signup'), form: $('form-signup'), email: $('signup-email'), pw: $('signup-password'), pw2: $('signup-confirm'), error: $('signup-error'), submit: $('signup-submit'), label: 'Criar conta', busy: 'Criando…', fields: $('signup-fields'), done: $('signup-done'), cancel: $('signup-cancel'), next: $('signup-to-signin') },
+    recover: { dlg: $('dlg-recover'), form: $('form-recover'), email: $('recover-email'), error: $('recover-error'), submit: $('recover-submit'), label: 'Enviar link', busy: 'Enviando…', fields: $('recover-fields'), done: $('recover-done'), cancel: $('recover-cancel'), next: $('recover-to-signin') },
+    account: { dlg: $('dlg-account'), form: $('form-account'), nick: $('account-nick'), email: $('account-email'), error: $('account-error'), saved: $('account-saved'), submit: $('account-save'), label: 'Salvar', busy: 'Salvando…', signout: $('btn-signout'), del: $('btn-delete-account') },
+    del: { dlg: $('dlg-delete-account'), form: $('form-delete-account'), error: $('delete-account-error'), submit: $('delete-account-submit'), label: 'Sim, apagar minha conta', busy: 'Apagando…' }
+  };
+
+  function setInvalid(input, message, errorId) {
+    if (!input) return;
+    if (message) {
+      input.setAttribute('aria-invalid', 'true');
+      input.setAttribute('aria-errormessage', errorId);
+    } else {
+      input.removeAttribute('aria-invalid');
+      input.removeAttribute('aria-errormessage');
+    }
+  }
+
+  function clearErrors(d) {
+    setMessage(d.error, '');
+    [d.email, d.pw, d.pw2, d.nick].forEach(function (i) { setInvalid(i, ''); });
+  }
+
+  function failField(d, field, message) {
+    setMessage(d.error, message);
+    setInvalid(field, message, d.error.id);
+    if (field) field.focus();
+  }
+
+  function setBusy(d, busy) {
+    d.submit.disabled = busy;
+    d.submit.textContent = busy ? d.busy : d.label;
+    if (busy) d.form.setAttribute('aria-busy', 'true');
+    else d.form.removeAttribute('aria-busy');
+    if (d.signout) d.signout.disabled = busy;
+    if (d.del) d.del.disabled = busy;
+  }
+
+  // Campos de senha: sempre voltam vazios e escondidos
+  function wipePasswords(d) {
+    [d.pw, d.pw2].forEach(function (i) {
+      if (!i) return;
+      i.value = '';
+      i.type = 'password';
+    });
+    Array.prototype.forEach.call(d.form.querySelectorAll('.pw-toggle'), function (b) {
+      b.setAttribute('aria-pressed', 'false');
+    });
+  }
+
+  function emailLooksValid(v) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+  }
+
+  function resetDialog(d) {
+    clearErrors(d);
+    setBusy(d, false);
+    wipePasswords(d);
+    if (d.fields) {
+      show(d.fields, true);
+      show(d.done, false);
+      show(d.submit, true);
+      show(d.next, false);
+      d.cancel.textContent = 'Cancelar';
+    }
+    if (d.saved) setMessage(d.saved, '');
+  }
+
+  function openAuthDialog(d, focusEl) {
+    resetDialog(d);
+    openDialog(d.dlg);
+    if (focusEl) focusEl.focus();
+  }
+
+  function finishDone(d) {
+    show(d.fields, false);
+    show(d.submit, false);
+    show(d.next, true);
+    d.cancel.textContent = 'Fechar';
+    show(d.done, true);
+    d.done.focus();
+  }
+
+  // Limpa senhas sempre que um diálogo fecha (Esc, Cancelar, sucesso)
+  Object.keys(ac).forEach(function (k) {
+    var d = ac[k];
+    d.dlg.addEventListener('close', function () { wipePasswords(d); setBusy(d, false); });
+  });
+
+  // Alternar entre diálogos (links "Esqueci minha senha", "Criar conta"...)
+  var gotoMap = { 'dlg-signin': 'signin', 'dlg-signup': 'signup', 'dlg-recover': 'recover' };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-goto]'), function (b) {
+    b.addEventListener('click', function () {
+      var target = ac[gotoMap[b.getAttribute('data-goto')]];
+      var from = b.closest('dialog');
+      var prefill = '';
+      var fromD = null;
+      Object.keys(ac).forEach(function (k) { if (ac[k].dlg === from) fromD = ac[k]; });
+      if (fromD && fromD.email && fromD.email.value) prefill = fromD.email.value;
+      if (from) from.close();
+      openAuthDialog(target, target.email);
+      if (prefill && !target.email.value) target.email.value = prefill;
+      if (prefill) target.pw ? target.pw.focus() : target.email.focus();
+    });
+  });
+
+  // Mostrar/ocultar senha
+  Array.prototype.forEach.call(document.querySelectorAll('.pw-toggle'), function (b) {
+    b.addEventListener('click', function () {
+      var input = $(b.getAttribute('aria-controls'));
+      var on = b.getAttribute('aria-pressed') !== 'true';
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      input.type = on ? 'text' : 'password';
+    });
+  });
+
+  els.btnSignin.addEventListener('click', function () { openAuthDialog(ac.signin, ac.signin.email); });
+
+  // Entrar
+  ac.signin.form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var d = ac.signin;
+    clearErrors(d);
+    var email = d.email.value.trim();
+    var password = d.pw.value;
+    if (!email) return failField(d, d.email, 'Informe o seu e-mail.');
+    if (!password) return failField(d, d.pw, 'Informe a sua senha.');
+    setBusy(d, true);
+    call(function () { return bridge.signIn({ email: email, password: password }); }).then(function (res) {
+      d.pw.value = '';
+      setBusy(d, false);
+      var err = applyResult(res);
+      if (err) {
+        failField(d, /confirm/i.test(err) ? d.email : (/senha/i.test(err) ? d.pw : d.email), err);
+      } else {
+        d.dlg.close();
+        if (els.btnAccount.hidden) focusMain(); else els.btnAccount.focus();
+      }
+    });
+  });
+
+  // Criar conta
+  ac.signup.form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var d = ac.signup;
+    if (d.fields.hidden) return;
+    clearErrors(d);
+    var email = d.email.value.trim();
+    var password = d.pw.value;
+    var confirm = d.pw2.value;
+    if (!email) return failField(d, d.email, 'Informe o seu e-mail.');
+    if (!emailLooksValid(email)) return failField(d, d.email, 'Informe um e-mail válido.');
+    if (password.length < 10) return failField(d, d.pw, 'A senha precisa ter pelo menos 10 caracteres.');
+    if (password !== confirm) {
+      d.pw2.value = '';
+      return failField(d, d.pw2, 'As senhas não conferem.');
+    }
+    setBusy(d, true);
+    call(function () { return bridge.signUp({ email: email, password: password }); }).then(function (res) {
+      d.pw.value = '';
+      d.pw2.value = '';
+      setBusy(d, false);
+      var err = applyResult(res);
+      if (err) {
+        var f = /conferem/i.test(err) ? d.pw2 : (/senha/i.test(err) ? d.pw : d.email);
+        failField(d, f, err);
+      } else {
+        wipePasswords(d);
+        finishDone(d);
+      }
+    });
+  });
+
+  // Recuperar senha: a mensagem é sempre a mesma, exista a conta ou não
+  ac.recover.form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var d = ac.recover;
+    if (d.fields.hidden) return;
+    clearErrors(d);
+    var email = d.email.value.trim();
+    if (!email) return failField(d, d.email, 'Informe o seu e-mail.');
+    if (!emailLooksValid(email)) return failField(d, d.email, 'Informe um e-mail válido.');
+    setBusy(d, true);
+    call(function () { return bridge.recover({ email: email }); }).then(function () {
+      setBusy(d, false);
+      finishDone(d);
+    });
+  });
+
+  // Minha conta
+  function selectedVisibility() {
+    var r = ac.account.form.querySelector('input[name="mmr-visibility"]:checked');
+    return r ? r.value : null;
+  }
+
+  els.btnAccount.addEventListener('click', function () {
+    var d = ac.account;
+    var a = authInfo() || {};
+    resetDialog(d);
+    d.email.textContent = a.email || '';
+    d.nick.value = a.displayName || '';
+    Array.prototype.forEach.call(d.form.querySelectorAll('input[name="mmr-visibility"]'), function (r) {
+      r.checked = r.value === (a.mmrVisibility || 'friends');
+    });
+    openDialog(d.dlg);
+    d.nick.focus();
+    d.nick.select();
+  });
+
+  ac.account.form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var d = ac.account;
+    clearErrors(d);
+    setMessage(d.saved, '');
+    var nick = d.nick.value.trim();
+    var vis = selectedVisibility();
+    if (nick.length < 2 || nick.length > 24) return failField(d, d.nick, 'O apelido precisa ter de 2 a 24 caracteres.');
+    setBusy(d, true);
+    call(function () { return bridge.updateProfile({ displayName: nick, mmrVisibility: vis }); }).then(function (res) {
+      setBusy(d, false);
+      var err = applyResult(res);
+      if (err) failField(d, d.nick, err);
+      else setMessage(d.saved, 'Alterações salvas.');
+    });
+  });
+
+  ac.account.signout.addEventListener('click', function () {
+    var d = ac.account;
+    clearErrors(d);
+    setBusy(d, true);
+    call(function () { return bridge.signOut(); }).then(function (res) {
+      setBusy(d, false);
+      var err = applyResult(res);
+      if (err) {
+        setMessage(d.error, err);
+      } else {
+        d.dlg.close();
+        if (els.btnSignin.hidden) focusMain(); else els.btnSignin.focus();
+      }
+    });
+  });
+
+  // Apagar conta (confirmação separada)
+  ac.account.del.addEventListener('click', function () {
+    openAuthDialog(ac.del, null);
+    ac.del.form.querySelector('[data-close]').focus();
+  });
+
+  ac.del.form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var d = ac.del;
+    clearErrors(d);
+    setBusy(d, true);
+    call(function () { return bridge.deleteAccount(); }).then(function (res) {
+      setBusy(d, false);
+      var err = applyResult(res);
+      if (err) {
+        setMessage(d.error, err);
+      } else {
+        d.dlg.close();
+        ac.account.dlg.close();
+        if (els.btnSignin.hidden) focusMain(); else els.btnSignin.focus();
       }
     });
   });

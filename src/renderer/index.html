@@ -19,6 +19,18 @@
       </svg>
       <span class="brand-name">Ghost Rank</span>
     </div>
+
+    <div id="account-bar" class="account-bar" hidden>
+      <p id="account-unconfigured" class="account-note" hidden>Contas ainda não configuradas</p>
+      <button id="btn-signin" class="btn btn-account" type="button" aria-haspopup="dialog" hidden>
+        <svg class="btn-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        <span>Entrar</span>
+      </button>
+      <button id="btn-account" class="btn btn-account" type="button" aria-haspopup="dialog" hidden>
+        <svg class="btn-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>
+        <span id="account-name" class="account-name"></span>
+      </button>
+    </div>
   </header>
 
   <main id="conteudo" class="page" tabindex="-1">
@@ -205,6 +217,151 @@
       <div class="dialog-actions">
         <button class="btn" type="button" data-close>Cancelar</button>
         <button class="btn btn-danger-solid" type="submit">Sim, apagar tudo</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Diálogo: entrar -->
+  <dialog id="dlg-signin" class="dialog" aria-labelledby="dlg-signin-title">
+    <form id="form-signin" class="form" novalidate>
+      <h2 id="dlg-signin-title" class="dialog-title">Entrar</h2>
+      <div class="field">
+        <label for="signin-email">E-mail</label>
+        <input id="signin-email" type="email" inputmode="email" autocomplete="email" spellcheck="false" autocapitalize="off" maxlength="254" required>
+      </div>
+      <div class="field">
+        <label for="signin-password">Senha</label>
+        <div class="pw-wrap">
+          <input id="signin-password" type="password" autocomplete="current-password" spellcheck="false" autocapitalize="off" maxlength="72" required>
+          <button class="pw-toggle" type="button" aria-pressed="false" aria-controls="signin-password" aria-label="Mostrar senha">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><line class="eye-off" x1="4" y1="4" x2="20" y2="20"/></svg>
+          </button>
+        </div>
+      </div>
+      <p id="signin-error" class="form-error" role="alert" hidden></p>
+      <div class="link-row">
+        <button class="link-btn" type="button" data-goto="dlg-recover">Esqueci minha senha</button>
+        <button class="link-btn" type="button" data-goto="dlg-signup">Criar conta</button>
+      </div>
+      <div class="dialog-actions">
+        <button class="btn" type="button" data-close>Cancelar</button>
+        <button id="signin-submit" class="btn btn-primary" type="submit">Entrar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Diálogo: criar conta -->
+  <dialog id="dlg-signup" class="dialog" aria-labelledby="dlg-signup-title">
+    <form id="form-signup" class="form" novalidate>
+      <h2 id="dlg-signup-title" class="dialog-title">Criar conta</h2>
+      <div id="signup-fields" class="form">
+      <div class="field">
+        <label for="signup-email">E-mail</label>
+        <input id="signup-email" type="email" inputmode="email" autocomplete="email" spellcheck="false" autocapitalize="off" maxlength="254" required>
+      </div>
+      <div class="field">
+        <label for="signup-password">Senha</label>
+        <div class="pw-wrap">
+          <input id="signup-password" type="password" autocomplete="new-password" spellcheck="false" autocapitalize="off" maxlength="72" aria-describedby="signup-password-help" required>
+          <button class="pw-toggle" type="button" aria-pressed="false" aria-controls="signup-password" aria-label="Mostrar senha">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><line class="eye-off" x1="4" y1="4" x2="20" y2="20"/></svg>
+          </button>
+        </div>
+        <p id="signup-password-help" class="help">Use no mínimo 10 caracteres.</p>
+      </div>
+      <div class="field">
+        <label for="signup-confirm">Confirmar senha</label>
+        <div class="pw-wrap">
+          <input id="signup-confirm" type="password" autocomplete="new-password" spellcheck="false" autocapitalize="off" maxlength="72" required>
+          <button class="pw-toggle" type="button" aria-pressed="false" aria-controls="signup-confirm" aria-label="Mostrar senha">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><line class="eye-off" x1="4" y1="4" x2="20" y2="20"/></svg>
+          </button>
+        </div>
+      </div>
+        <p id="signup-error" class="form-error" role="alert" hidden></p>
+        <div class="link-row">
+          <button class="link-btn" type="button" data-goto="dlg-signin">Já tenho conta</button>
+        </div>
+      </div>
+      <p id="signup-done" class="notice" role="status" tabindex="-1" hidden>Enviamos um e-mail de confirmação. Abra o link e depois entre.</p>
+      <div class="dialog-actions">
+        <button id="signup-cancel" class="btn" type="button" data-close>Cancelar</button>
+        <button id="signup-submit" class="btn btn-primary" type="submit">Criar conta</button>
+        <button id="signup-to-signin" class="btn btn-primary" type="button" data-goto="dlg-signin" hidden>Ir para entrar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Diálogo: recuperar senha -->
+  <dialog id="dlg-recover" class="dialog" aria-labelledby="dlg-recover-title">
+    <form id="form-recover" class="form" novalidate>
+      <h2 id="dlg-recover-title" class="dialog-title">Recuperar senha</h2>
+      <div id="recover-fields" class="form">
+        <p class="help">Informe o e-mail da sua conta e enviaremos um link para criar uma nova senha.</p>
+      <div class="field">
+        <label for="recover-email">E-mail</label>
+        <input id="recover-email" type="email" inputmode="email" autocomplete="email" spellcheck="false" autocapitalize="off" maxlength="254" required>
+      </div>
+        <p id="recover-error" class="form-error" role="alert" hidden></p>
+      </div>
+      <p id="recover-done" class="notice" role="status" tabindex="-1" hidden>Se houver uma conta com esse e-mail, enviamos o link.</p>
+      <div class="dialog-actions">
+        <button id="recover-cancel" class="btn" type="button" data-close>Cancelar</button>
+        <button id="recover-submit" class="btn btn-primary" type="submit">Enviar link</button>
+        <button id="recover-to-signin" class="btn btn-primary" type="button" data-goto="dlg-signin" hidden>Voltar para entrar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Diálogo: minha conta -->
+  <dialog id="dlg-account" class="dialog" aria-labelledby="dlg-account-title">
+    <form id="form-account" class="form" novalidate>
+      <h2 id="dlg-account-title" class="dialog-title">Minha conta</h2>
+      <p id="account-email" class="caption"></p>
+      <div class="field">
+        <label for="account-nick">Apelido</label>
+        <input id="account-nick" type="text" autocomplete="nickname" spellcheck="false" maxlength="24" aria-describedby="account-nick-help" required>
+        <p id="account-nick-help" class="help">De 2 a 24 caracteres. É o nome que seus amigos veem.</p>
+      </div>
+      <fieldset class="choices" aria-describedby="privacy-help">
+        <legend>Quem pode ver o meu MMR</legend>
+        <p id="privacy-help" class="help">Você pode mudar isso quando quiser.</p>
+        <label class="choice">
+          <input type="radio" name="mmr-visibility" value="friends">
+          <span class="choice-text"><span class="choice-title">Amigos</span><span class="choice-desc">Só quem você adicionou como amigo.</span></span>
+        </label>
+        <label class="choice">
+          <input type="radio" name="mmr-visibility" value="group">
+          <span class="choice-text"><span class="choice-title">Grupo</span><span class="choice-desc">Os membros dos grupos de que você participa.</span></span>
+        </label>
+        <label class="choice">
+          <input type="radio" name="mmr-visibility" value="nobody">
+          <span class="choice-text"><span class="choice-title">Ninguém</span><span class="choice-desc">Seu MMR fica só com você.</span></span>
+        </label>
+      </fieldset>
+      <p id="account-error" class="form-error" role="alert" hidden></p>
+      <p id="account-saved" class="notice" role="status" hidden></p>
+      <div class="dialog-actions dialog-actions-split">
+        <button id="btn-delete-account" class="btn btn-danger" type="button">Apagar minha conta</button>
+        <span class="spacer"></span>
+        <button id="btn-signout" class="btn" type="button">Sair</button>
+        <button id="account-save" class="btn btn-primary" type="submit">Salvar</button>
+      </div>
+      <div class="dialog-actions">
+        <button class="btn" type="button" data-close>Fechar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Diálogo: apagar conta -->
+  <dialog id="dlg-delete-account" class="dialog" aria-labelledby="dlg-delete-account-title" aria-describedby="dlg-delete-account-text">
+    <form id="form-delete-account" class="form" novalidate>
+      <h2 id="dlg-delete-account-title" class="dialog-title">Apagar sua conta?</h2>
+      <p id="dlg-delete-account-text" class="help">Isso apaga a sua conta, o seu perfil e os seus dados dos grupos. Não dá para desfazer. O rastreador de MMR deste computador continua como está.</p>
+      <p id="delete-account-error" class="form-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button class="btn" type="button" data-close>Cancelar</button>
+        <button id="delete-account-submit" class="btn btn-danger-solid" type="submit">Sim, apagar minha conta</button>
       </div>
     </form>
   </dialog>

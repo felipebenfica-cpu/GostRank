@@ -39,6 +39,7 @@ function createController({
   syncIntervalMs = 180000,
   manualCooldownMs = 30000,
   onUpdate = () => {},
+  getAuthView = null,
   timers = { setInterval: (...a) => setInterval(...a), clearInterval: (...a) => clearInterval(...a) },
 } = {}) {
   const nowSec = () => Math.floor(now() / 1000);
@@ -63,6 +64,14 @@ function createController({
   let nextSyncAt = null;
   let timer = null;
 
+  function authView() {
+    try {
+      const a = getAuthView && getAuthView();
+      if (a && typeof a === 'object') return a;
+    } catch { /* cai no padrão */ }
+    return { status: 'unconfigured', email: null, displayName: null, mmrVisibility: null };
+  }
+
   function getView() {
     const manualAvailableAt = lastManualAt !== null && lastManualAt + manualCooldownMs > now()
       ? lastManualAt + manualCooldownMs : null;
@@ -71,6 +80,7 @@ function createController({
       profile: state ? { accountId: state.accountId, personaName: state.personaName ?? null } : null,
       summary: state ? tracker.summarize(state) : null,
       heroes: { ...heroes },
+      auth: authView(),
       sync: {
         status: syncing ? 'syncing' : (lastError ? 'error' : 'idle'),
         lastSyncAt,

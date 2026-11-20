@@ -153,6 +153,20 @@ button, input { font: inherit; color: inherit; }
 .ghost-body { fill: var(--ghost); }
 .ghost-eye { fill: var(--bg); }
 
+/* ---- Conta (topo) ------------------------------------------------------ */
+.account-bar { min-height: 44px; display: flex; align-items: center; justify-content: flex-end; min-width: 0; }
+.account-note { font-size: var(--fs-sm); color: var(--text-muted); }
+.btn-account { min-width: 0; gap: var(--space-2); max-width: 16rem; }
+.btn-icon {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.account-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ---- Layout ------------------------------------------------------------ */
 .page {
   max-width: 1120px;
@@ -226,7 +240,9 @@ button, input { font: inherit; color: inherit; }
 
 label { font-weight: 600; font-size: var(--fs-sm); }
 
-input[type="text"] {
+input[type="text"],
+input[type="email"],
+input[type="password"] {
   width: 100%;
   min-height: 44px;
   padding: var(--space-2) var(--space-3);
@@ -236,8 +252,12 @@ input[type="text"] {
   color: var(--text);
   transition: border-color var(--dur) var(--ease);
 }
-input[type="text"]:hover { border-color: var(--text-faint); }
-input[type="text"]:focus-visible { border-color: var(--ghost); box-shadow: var(--focus); }
+input[type="text"]:hover,
+input[type="email"]:hover,
+input[type="password"]:hover { border-color: var(--text-faint); }
+input[type="text"]:focus-visible,
+input[type="email"]:focus-visible,
+input[type="password"]:focus-visible { border-color: var(--ghost); box-shadow: var(--focus); }
 input[aria-invalid="true"] { border-color: var(--danger); }
 
 .help { font-size: var(--fs-sm); color: var(--text-muted); }
@@ -474,6 +494,81 @@ input[aria-invalid="true"] { border-color: var(--danger); }
 
 .dialog-title { font-size: var(--fs-lg); }
 .dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-2); }
+
+/* Senha, escolhas, avisos */
+.pw-wrap { position: relative; }
+.pw-wrap input { padding-right: 3rem; }
+.pw-toggle {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.pw-toggle:hover { color: var(--text); background: var(--surface-3); }
+.pw-toggle[aria-pressed="true"] { color: var(--ghost); }
+.pw-toggle svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.pw-toggle .eye-off { display: none; }
+.pw-toggle[aria-pressed="true"] .eye-off { display: block; }
+
+.link-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2) var(--space-4); }
+.link-btn {
+  padding: var(--space-2) 0;
+  min-height: 32px;
+  background: none;
+  border: 0;
+  color: var(--ghost);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.link-btn:hover { color: var(--text); }
+
+.notice {
+  padding: var(--space-3) var(--space-4);
+  background: var(--win-bg);
+  border: 1px solid var(--ghost);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+}
+
+.choices { display: grid; gap: var(--space-2); margin: 0; padding: 0; border: 0; min-width: 0; }
+.choices legend { padding: 0; margin-bottom: var(--space-1); font-weight: 600; font-size: var(--fs-sm); }
+.choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-weight: 400;
+}
+.choice:hover { border-color: var(--text-faint); }
+.choice:has(input:checked) { border-color: var(--ghost); }
+.choice:has(input:focus-visible) { box-shadow: var(--focus); }
+.choice input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--ghost); }
+.choice input:focus-visible { box-shadow: none; }
+.choice-text { display: grid; gap: 2px; }
+.choice-title { font-weight: 600; font-size: var(--fs-sm); }
+.choice-desc { font-size: var(--fs-xs); color: var(--text-muted); }
+
+.dialog-actions-split { justify-content: flex-start; }
+.dialog-actions-split .spacer { flex: 1 1 auto; }
+.dialog form[aria-busy="true"] { cursor: progress; }
 
 /* ---- Animações --------------------------------------------------------- */
 @keyframes float {

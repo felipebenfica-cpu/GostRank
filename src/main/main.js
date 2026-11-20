@@ -9,6 +9,11 @@ const { registerIpc } = require('./ipc');
 const { createOpenDotaClient } = require('./opendota');
 const { createStore } = require('./store');
 const { createController } = require('./controller');
+const { loadConfig } = require('./config');
+const { createAuthClient } = require('./auth');
+const { createSessionManager } = require('./session');
+const { createProfileClient } = require('./profile');
+const { createAccountService } = require('./account');
 
 app.enableSandbox();
 protocol.registerScheme();
@@ -44,19 +49,63 @@ if (!app.requestSingleInstanceLock()) {
       encryptor,
     });
     const client = createOpenDotaClient({});
+    const pushUpdate = () => {
+      if (controller && mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send('gr:update', controller.getView());
+      }
+    };
+
+    // Contas: qualquer falha aqui deixa só as contas indisponíveis; o rastreador segue normal.
+    let account = createAccountService({});
+    let session = null;
+    try {
+      const config = loadConfig({});
+      if (config) {
+        const sessionFile = createStore({
+          filePath: path.join(app.getPath('userData'), 'ghost-rank-session.dat'),
+          encryptor,
+        });
+        // Tokens nunca vão para o disco sem cifra: sem safeStorage a sessão fica só em memória.
+        const sessionStore = {
+          load: () => sessionFile.load(),
+          save: (o) => {
+            if (!encryptor.isAvailable()) throw new Error('sem cifra');
+            sessionFile.save(o);
+          },
+          clear: () => sessionFile.clear(),
+        };
+        const auth = createAuthClient({ supabaseUrl: config.supabaseUrl, anonKey: config.anonKey });
+        session = createSessionManager({ store: sessionStore, auth });
+        const profile = createProfileClient({
+          supabaseUrl: config.supabaseUrl,
+          anonKey: config.anonKey,
+          getAccessToken: async () => {
+            const s = await session.get();
+            return s ? s.accessToken : null;
+          },
+        });
+        account = createAccountService({ config, auth, session, profile, onChange: pushUpdate });
+      }
+    } catch {
+      account = createAccountService({});
+      session = null;
+    }
+
     controller = createController({
       client,
       store,
+      getAuthView: () => account.getAuthView(),
       onUpdate: (view) => {
         if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
           mainWindow.webContents.send('gr:update', view);
         }
       },
     });
-    unregisterIpc = registerIpc(controller);
+    unregisterIpc = registerIpc(controller, { account, session });
 
     createWindow();
     controller.start();
+    account.refreshProfile().catch(() => {});
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

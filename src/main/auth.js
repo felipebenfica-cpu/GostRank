@@ -1,0 +1,178 @@
+'use strict';
+
+const { normalizeSupabaseUrl, isValidAnonKey } = require('./config');
+
+const MESSAGES = Object.freeze({
+  invalid_credentials: 'E-mail ou senha incorretos.',
+  email_not_confirmed: 'Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada.',
+  weak_password: 'Senha fraca demais. Escolha uma senha mais longa e menos comum.',
+  rate_limited: 'Muitas tentativas. Aguarde alguns minutos e tente de novo.',
+  network: 'Sem conexão com o servidor de contas. Verifique sua internet.',
+  timeout: 'O servidor de contas demorou demais para responder. Tente novamente.',
+  bad_response: 'O servidor de contas enviou uma resposta inesperada. Tente novamente.',
+  unconfigured: 'Contas indisponíveis neste computador.',
+  unauthenticated: 'Sua sessão expirou. Entre novamente.',
+  invalid: 'Dados inválidos.',
+});
+
+const MAX_BODY_CHARS = 1024 * 1024;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+class AuthError extends Error {
+  constructor(code) {
+    super(MESSAGES[code] || MESSAGES.bad_response);
+    this.name = 'AuthError';
+    this.code = code;
+  }
+}
+
+/** Decodifica o campo `sub` do JWT (sem verificar assinatura: o servidor valida; aqui só lemos o id). */
+function userIdFromToken(token) {
+  if (typeof token !== 'string' || token.length > 4096) return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    const sub = payload && payload.sub;
+    return typeof sub === 'string' && UUID_RE.test(sub) ? sub.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Requisição JSON com timeout, só https. Lança AuthError para rede, timeout e 429. */
+function createRequester({ fetchImpl, supabaseUrl, anonKey, timeoutMs = 10000 } = {}) {
+  const base = normalizeSupabaseUrl(supabaseUrl);
+  const fetchFn = fetchImpl || (typeof fetch === 'function' ? fetch : null);
+  if (!base || !isValidAnonKey(anonKey) || typeof fetchFn !== 'function') {
+    throw new AuthError('unconfigured');
+  }
+
+  return async function request(pathAndQuery, { method = 'GET', token = null, body, headers = {} } = {}) {
+    const url = base + pathAndQuery;
+    const ctrl = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, timeoutMs);
+    try {
+      const h = {
+        apikey: anonKey,
+        Authorization: `Bearer ${token || anonKey}`,
+        Accept: 'application/json',
+        ...headers,
+      };
+      const init = { method, headers: h, signal: ctrl.signal, redirect: 'error' };
+      if (body !== undefined) {
+        h['Content-Type'] = 'application/json';
+        init.body = JSON.stringify(body);
+      }
+      const res = await fetchFn(url, init);
+      const text = await res.text();
+      if (typeof text !== 'string' || text.length > MAX_BODY_CHARS) throw new AuthError('bad_response');
+      let data = null;
+      if (text.length > 0) {
+        try { data = JSON.parse(text); } catch { data = null; }
+      }
+      if (res.status === 429) throw new AuthError('rate_limited');
+      return { status: res.status, data };
+    } catch (err) {
+      if (err instanceof AuthError) throw err;
+      throw new AuthError(timedOut || (err && err.name === 'AbortError') ? 'timeout' : 'network');
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+}
+
+function errorCodeOf(data) {
+  if (!data || typeof data !== 'object') return '';
+  const c = data.error_code || data.code || data.error;
+  return typeof c === 'string' ? c : '';
+}
+
+function createAuthClient({ fetchImpl, supabaseUrl, anonKey, now = () => Date.now(), timeoutMs = 10000 } = {}) {
+  const request = createRequester({ fetchImpl, supabaseUrl, anonKey, timeoutMs });
+
+  function toSession(data) {
+    if (!data || typeof data !== 'object') throw new AuthError('bad_response');
+    const { access_token: accessToken, refresh_token: refreshToken, user } = data;
+    if (typeof accessToken !== 'string' || typeof refreshToken !== 'string'
+      || !accessToken || !refreshToken || !user || typeof user !== 'object') {
+      throw new AuthError('bad_response');
+    }
+    const id = userIdFromToken(accessToken);
+    if (!id) throw new AuthError('bad_response');
+    let expiresAt = Number(data.expires_at);
+    if (!Number.isFinite(expiresAt) || expiresAt <= 0) {
+      const inSec = Number(data.expires_in);
+      if (!Number.isFinite(inSec) || inSec <= 0) throw new AuthError('bad_response');
+      expiresAt = Math.floor(now() / 1000) + Math.floor(inSec);
+    }
+    return {
+      accessToken,
+      refreshToken,
+      expiresAt: Math.floor(expiresAt),
+      user: {
+        id,
+        email: typeof user.email === 'string' ? user.email : '',
+        emailConfirmed: Boolean(user.email_confirmed_at || user.confirmed_at),
+      },
+    };
+  }
+
+  function mapTokenFailure(status, data) {
+    const code = errorCodeOf(data);
+    if (code === 'email_not_confirmed') return new AuthError('email_not_confirmed');
+    if (code === 'weak_password') return new AuthError('weak_password');
+    if (status === 400 || status === 401 || status === 403 || status === 422) {
+      return new AuthError('invalid_credentials');
+    }
+    return new AuthError('bad_response');
+  }
+
+  async function signUp({ email, password }) {
+    const { status, data } = await request('/auth/v1/signup', { method: 'POST', body: { email, password } });
+    if (status >= 200 && status < 300) return { needsConfirmation: true };
+    const code = errorCodeOf(data);
+    if (code === 'weak_password') throw new AuthError('weak_password');
+    // Conta já existente: mesma resposta de um cadastro novo (não revela quem tem conta).
+    if (code === 'user_already_exists' || code === 'email_exists') return { needsConfirmation: true };
+    throw new AuthError('bad_response');
+  }
+
+  async function signIn({ email, password }) {
+    const { status, data } = await request('/auth/v1/token?grant_type=password', {
+      method: 'POST', body: { email, password },
+    });
+    if (status === 200) return toSession(data);
+    throw mapTokenFailure(status, data);
+  }
+
+  async function refresh(refreshToken) {
+    if (typeof refreshToken !== 'string' || !refreshToken) throw new AuthError('invalid_credentials');
+    const { status, data } = await request('/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST', body: { refresh_token: refreshToken },
+    });
+    if (status === 200) return toSession(data);
+    throw mapTokenFailure(status, data);
+  }
+
+  async function recover({ email }) {
+    try {
+      await request('/auth/v1/recover', { method: 'POST', body: { email } });
+    } catch (err) {
+      // Só falha de conexão aparece; respostas do servidor nunca revelam se a conta existe.
+      if (err instanceof AuthError && (err.code === 'network' || err.code === 'timeout')) throw err;
+    }
+    return { ok: true };
+  }
+
+  async function signOut(accessToken) {
+    if (typeof accessToken !== 'string' || !accessToken) return { ok: true };
+    await request('/auth/v1/logout?scope=local', { method: 'POST', token: accessToken });
+    return { ok: true };
+  }
+
+  return { signUp, signIn, refresh, recover, signOut };
+}
+
+module.exports = { createAuthClient, createRequester, AuthError, userIdFromToken, MESSAGES };

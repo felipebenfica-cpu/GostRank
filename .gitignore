@@ -7,3 +7,4 @@ out/
 *.corrupt-*
 .DS_Store
 Thumbs.db
+config.local.json

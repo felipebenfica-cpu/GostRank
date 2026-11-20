@@ -1,6 +1,7 @@
 'use strict';
 
 const { isAppUrl } = require('./security');
+const { UserInputError } = require('./controller');
 
 const CHANNELS = Object.freeze({
   getView: 'gr:getView',
@@ -9,11 +10,20 @@ const CHANNELS = Object.freeze({
   correctMmr: 'gr:correctMmr',
   updateSettings: 'gr:updateSettings',
   reset: 'gr:reset',
+  signUp: 'gr:auth:signUp',
+  signIn: 'gr:auth:signIn',
+  signOut: 'gr:auth:signOut',
+  recover: 'gr:auth:recover',
+  updateProfile: 'gr:profile:update',
+  deleteAccount: 'gr:account:delete',
 });
 
 const GENERIC_ERROR = 'Ocorreu um erro inesperado. Tente novamente.';
 const INVALID_ERROR = 'Dados inválidos.';
 const MAX_STRING = 200;
+const MAX_EMAIL = 254;
+const MAX_PASSWORD = 128;
+const UNAVAILABLE_ERROR = 'Contas indisponíveis neste computador.';
 
 function isPlainObject(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -21,20 +31,20 @@ function isPlainObject(value) {
   return proto === Object.prototype || proto === null;
 }
 
-function isInputValue(v) {
+function isInputValue(v, max = MAX_STRING) {
   if (typeof v === 'number') return Number.isFinite(v);
-  return typeof v === 'string' && v.length <= MAX_STRING;
+  return typeof v === 'string' && v.length <= max;
 }
 
-/** Objeto simples, só com chaves permitidas, valores número/string. */
-function checkObject(value, requiredKeys, optionalKeys = []) {
+/** Objeto simples, só com chaves permitidas, valores número/string (limites por chave em `limits`). */
+function checkObject(value, requiredKeys, optionalKeys = [], limits = {}) {
   if (!isPlainObject(value)) return false;
   const keys = Object.keys(value);
   if (Object.getOwnPropertySymbols(value).length > 0) return false;
   const allowed = new Set([...requiredKeys, ...optionalKeys]);
   if (keys.some((k) => !allowed.has(k))) return false;
   if (requiredKeys.some((k) => !keys.includes(k))) return false;
-  return keys.every((k) => isInputValue(value[k]));
+  return keys.every((k) => isInputValue(value[k], limits[k] ?? MAX_STRING));
 }
 
 function validateSetupPayload(p) {
@@ -65,6 +75,33 @@ function validateSettingsPayload(p) {
 function validateResetPayload(p) {
   if (!isPlainObject(p) || Object.keys(p).length !== 1 || p.confirm !== true) return null;
   return { confirm: true };
+}
+
+function validateCredentialsPayload(p) {
+  if (!checkObject(p, ['email', 'password'], [], { email: MAX_EMAIL, password: MAX_PASSWORD })) return null;
+  if (typeof p.email !== 'string' || typeof p.password !== 'string') return null;
+  return { email: p.email, password: p.password };
+}
+
+function validateRecoverPayload(p) {
+  if (!checkObject(p, ['email'], [], { email: MAX_EMAIL })) return null;
+  if (typeof p.email !== 'string') return null;
+  return { email: p.email };
+}
+
+function validateProfilePayload(p) {
+  if (!checkObject(p, [], ['displayName', 'mmrVisibility'])) return null;
+  if (Object.keys(p).length === 0) return null;
+  const out = {};
+  if ('displayName' in p) {
+    if (typeof p.displayName !== 'string') return null;
+    out.displayName = p.displayName;
+  }
+  if ('mmrVisibility' in p) {
+    if (typeof p.mmrVisibility !== 'string') return null;
+    out.mmrVisibility = p.mmrVisibility;
+  }
+  return out;
 }
 
 function validateEmptyPayload(p) {
@@ -101,7 +138,12 @@ function wrapHandler(validate, action) {
   };
 }
 
-function buildHandlers(controller) {
+function buildHandlers(controller, { account = null, session = null } = {}) {
+  const viaAccount = (fn) => async (d) => {
+    if (!account || !account.available) throw new UserInputError(UNAVAILABLE_ERROR);
+    await fn(d);
+    return controller.getView();
+  };
   return {
     [CHANNELS.getView]: wrapHandler(validateEmptyPayload, () => controller.getView()),
     [CHANNELS.setup]: wrapHandler(validateSetupPayload, (d) => controller.setup(d)),
@@ -109,12 +151,22 @@ function buildHandlers(controller) {
     [CHANNELS.correctMmr]: wrapHandler(validateCorrectPayload, (d) => controller.correctMmr(d)),
     [CHANNELS.updateSettings]: wrapHandler(validateSettingsPayload, (d) => controller.updateSettings(d)),
     [CHANNELS.reset]: wrapHandler(validateResetPayload, () => controller.reset()),
+    [CHANNELS.signUp]: wrapHandler(validateCredentialsPayload, viaAccount((d) => account.signUp(d))),
+    [CHANNELS.signIn]: wrapHandler(validateCredentialsPayload, viaAccount((d) => account.signIn(d))),
+    [CHANNELS.signOut]: wrapHandler(validateEmptyPayload, viaAccount(() => account.signOut())),
+    [CHANNELS.recover]: wrapHandler(validateRecoverPayload, viaAccount((d) => account.recover(d))),
+    [CHANNELS.updateProfile]: wrapHandler(validateProfilePayload, viaAccount((d) => account.updateProfile(d))),
+    [CHANNELS.deleteAccount]: wrapHandler(validateResetPayload, viaAccount(async () => {
+      await account.deleteAccount();
+      if (session) session.clear();
+      controller.reset();
+    })),
   };
 }
 
-function registerIpc(controller) {
+function registerIpc(controller, services) {
   const { ipcMain } = require('electron');
-  const handlers = buildHandlers(controller);
+  const handlers = buildHandlers(controller, services);
   for (const [channel, handler] of Object.entries(handlers)) {
     ipcMain.handle(channel, handler);
   }
@@ -132,6 +184,9 @@ module.exports = {
   validateSettingsPayload,
   validateResetPayload,
   validateEmptyPayload,
+  validateCredentialsPayload,
+  validateRecoverPayload,
+  validateProfilePayload,
   isTrustedSender,
   errorMessage,
   wrapHandler,

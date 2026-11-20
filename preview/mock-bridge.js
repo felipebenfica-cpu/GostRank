@@ -1,5 +1,6 @@
 /* Ponte simulada (window.ghostRank) para abrir a tela no navegador.
-   Cenários pela query string: ?s=setup | on_track | unreachable | insufficient | goal | empty | error | syncing */
+   Cenários pela query string: ?s=setup | on_track | unreachable | insufficient | goal | empty | error | syncing
+   | signed_out | signed_in | unconfigured (estado da conta; o painel usa os dados de on_track) */
 (function () {
   'use strict';
 
@@ -24,7 +25,20 @@
     syncing:      { start: 3000, goal: 3500, results: [1, 1, 0, 1, 1, 1, 0, 1, 1], baseline: [1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0], syncing: true }
   };
 
+  // Cenários de conta usam o painel de on_track
+  var AUTH_SCENARIOS = { signed_out: 1, signed_in: 1, unconfigured: 1 };
+  if (AUTH_SCENARIOS[scenario]) SCENARIOS[scenario] = SCENARIOS.on_track;
+
   var cfg = SCENARIOS[scenario] || SCENARIOS.on_track;
+
+  var DEMO_EMAIL = 'fantasma@exemplo.com';
+  var DEMO_PASSWORD = 'senha-segura-1';
+  var auth = {
+    status: scenario === 'unconfigured' ? 'unconfigured' : (scenario === 'signed_in' ? 'signed_in' : 'signed_out'),
+    email: scenario === 'signed_in' ? DEMO_EMAIL : null,
+    displayName: scenario === 'signed_in' ? 'Fantasma Noturno' : null,
+    mmrVisibility: scenario === 'signed_in' ? 'friends' : null
+  };
 
   var state = {
     configured: cfg.configured !== false,
@@ -104,13 +118,14 @@
 
   function getView() {
     if (!state.configured) {
-      return { configured: false, profile: null, summary: null, heroes: HEROES, sync: { status: 'idle', lastSyncAt: null, nextSyncAt: null, error: null, manualAvailableAt: null } };
+      return { configured: false, profile: null, summary: null, heroes: HEROES, auth: JSON.parse(JSON.stringify(auth)), sync: { status: 'idle', lastSyncAt: null, nextSyncAt: null, error: null, manualAvailableAt: null } };
     }
     return {
       configured: true,
       profile: state.profile,
       summary: summarize(),
       heroes: HEROES,
+      auth: JSON.parse(JSON.stringify(auth)),
       sync: JSON.parse(JSON.stringify(state.sync))
     };
   }
@@ -132,6 +147,8 @@
     var n = Number(s);
     return n >= min && n <= max ? n : null;
   }
+
+  function emailOk(v) { return v.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
 
   seedMatches();
   if (cfg.syncing) {
@@ -220,6 +237,81 @@
         state.baseline = [];
         return ok();
       }, 300);
+    },
+
+    signUp: function (data) {
+      return delay(function () {
+        if (auth.status === 'unconfigured') return fail('As contas ainda não foram configuradas.');
+        var email = String((data && data.email) || '').trim().toLowerCase();
+        var pw = String((data && data.password) || '');
+        if (!emailOk(email)) return fail('Informe um e-mail válido.');
+        if (pw.length < 10) return fail('A senha precisa ter pelo menos 10 caracteres.');
+        if (pw.length > 72) return fail('A senha pode ter no máximo 72 caracteres.');
+        if (/^(.)\1+$/.test(pw)) return fail('Essa senha é fraca demais. Misture letras, números e símbolos.');
+        return ok(); // mesma resposta exista a conta ou não
+      }, 700);
+    },
+
+    signIn: function (data) {
+      return delay(function () {
+        if (auth.status === 'unconfigured') return fail('As contas ainda não foram configuradas.');
+        var email = String((data && data.email) || '').trim().toLowerCase();
+        var pw = String((data && data.password) || '');
+        if (!emailOk(email)) return fail('Informe um e-mail válido.');
+        if (email !== DEMO_EMAIL || pw !== DEMO_PASSWORD) return fail('E-mail ou senha incorretos.');
+        auth.status = 'signed_in';
+        auth.email = email;
+        auth.displayName = auth.displayName || 'Fantasma Noturno';
+        auth.mmrVisibility = auth.mmrVisibility || 'friends';
+        return ok();
+      }, 700);
+    },
+
+    signOut: function () {
+      return delay(function () {
+        auth.status = 'signed_out';
+        auth.email = null;
+        auth.displayName = null;
+        auth.mmrVisibility = null;
+        return ok();
+      }, 300);
+    },
+
+    recover: function (data) {
+      return delay(function () {
+        var email = String((data && data.email) || '').trim().toLowerCase();
+        if (!emailOk(email)) return fail('Informe um e-mail válido.');
+        return ok();
+      }, 600);
+    },
+
+    updateProfile: function (data) {
+      return delay(function () {
+        if (auth.status !== 'signed_in') return fail('Entre na sua conta para continuar.');
+        data = data || {};
+        if (data.displayName !== undefined) {
+          var n = String(data.displayName).trim();
+          if (n.length < 2 || n.length > 24) return fail('O apelido precisa ter de 2 a 24 caracteres.');
+          if (/[<>\u0000-\u001f]/.test(n)) return fail('O apelido não pode ter os caracteres < ou >.');
+          auth.displayName = n;
+        }
+        if (data.mmrVisibility !== undefined) {
+          if (['friends', 'group', 'nobody'].indexOf(data.mmrVisibility) < 0) return fail('Escolha quem pode ver o seu MMR.');
+          auth.mmrVisibility = data.mmrVisibility;
+        }
+        return ok();
+      }, 500);
+    },
+
+    deleteAccount: function () {
+      return delay(function () {
+        if (auth.status !== 'signed_in') return fail('Entre na sua conta para continuar.');
+        auth.status = 'signed_out';
+        auth.email = null;
+        auth.displayName = null;
+        auth.mmrVisibility = null;
+        return ok();
+      }, 800);
     },
 
     onUpdate: function (cb) {
