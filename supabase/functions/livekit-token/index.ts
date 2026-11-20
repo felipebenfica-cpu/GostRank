@@ -26,9 +26,12 @@ export function createHandler({ getEnv, fetchImpl = fetch, now = () => Date.now(
       });
       if (!user || !UUID_RE.test(user.id)) return jsonResponse(401, { error: 'unauthorized' });
 
-      const lkUrl = getEnv('LIVEKIT_URL') || '';
-      const apiKey = getEnv('LIVEKIT_API_KEY') || '';
-      const apiSecret = getEnv('LIVEKIT_API_SECRET') || '';
+      // Tolera espacos, aspas e "NOME=" colados por engano no painel.
+      const clean = (name: string) => (getEnv(name) || '').trim()
+        .replace(new RegExp('^' + name + '='), '').replace(/^["']|["']$/g, '').trim();
+      const lkUrl = clean('LIVEKIT_URL');
+      const apiKey = clean('LIVEKIT_API_KEY');
+      const apiSecret = clean('LIVEKIT_API_SECRET');
       if (!lkUrl.startsWith('wss://') || !apiKey || !apiSecret) {
         return jsonResponse(503, { error: 'voice_unconfigured' });
       }

@@ -161,7 +161,7 @@ for (const variant of ['index.ts', 'bundle.ts']) {
       assert.strictEqual(p.iss, 'APIkey');
       assert.strictEqual(p.name, 'Ana');
       assert.strictEqual(p.video.room, `grupo-${GROUP}`);
-      assert.strictEqual(p.nbf, NOW / 1000);
+      assert.strictEqual(p.nbf, NOW / 1000 - 60);
       assert.strictEqual(p.exp, NOW / 1000 + 3600);
     });
 

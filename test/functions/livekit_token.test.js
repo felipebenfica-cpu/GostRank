@@ -31,7 +31,7 @@ test('JWT HS256 verificavel com header, payload, grants, nbf e exp', async () =>
   assert.deepStrictEqual(payload, {
     iss: 'APIabc123',
     sub: base.identity,
-    nbf: 1_700_000_000,
+    nbf: 1_700_000_000 - 60,
     exp: 1_700_003_600,
     name: 'Ana',
     video: {
@@ -56,7 +56,7 @@ test('ttl personalizado e nome opcional; caracteres nao ASCII no nome', async ()
   const { createLiveKitToken } = await load();
   const jwt = await createLiveKitToken({ ...base, name: 'João ção', ttlSeconds: 600 });
   const payload = b64urlDecode(jwt.split('.')[1]);
-  assert.strictEqual(payload.exp - payload.nbf, 600);
+  assert.strictEqual(payload.exp - payload.nbf, 660);
   assert.strictEqual(payload.name, 'João ção');
   const semNome = b64urlDecode((await createLiveKitToken({ ...base, name: undefined })).split('.')[1]);
   assert.ok(!('name' in semNome));

@@ -39,7 +39,7 @@ export async function createLiveKitToken({ apiKey, apiSecret, identity, name, ro
   const payload = {
     iss: apiKey,
     sub: identity,
-    nbf: nowSec,
+    nbf: nowSec - 60, // margem para diferenca de relogio entre servidores
     exp: nowSec + ttlSeconds,
     video: {
       room,
