@@ -227,7 +227,7 @@ Para melhorias futuras:
 
 ---
 
-**Versão**: 1.0
+**Versão**: 2.0
 **Status**: Pronto para uso
 
 <div align="center">
