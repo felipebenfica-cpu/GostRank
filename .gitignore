@@ -1,0 +1,9 @@
+node_modules/
+dist/
+out/
+*.log
+.env
+.env.*
+*.corrupt-*
+.DS_Store
+Thumbs.db
