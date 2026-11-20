@@ -12,10 +12,11 @@ const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'gr-cfg-'));
 test('normalizeSupabaseUrl aceita só https://*.supabase.co', () => {
   assert.equal(normalizeSupabaseUrl(URL_OK), URL_OK);
   assert.equal(normalizeSupabaseUrl(URL_OK + '/'), URL_OK);
+  assert.equal(normalizeSupabaseUrl('https://abc.supabase.co/rest/v1/'), 'https://abc.supabase.co');
   for (const bad of [
     'http://abc.supabase.co', 'https://supabase.co', 'https://evil.com', 'https://abc.supabase.co.evil.com',
     'https://evilsupabase.co', 'https://abc.supabase.co:8443', 'https://u:p@abc.supabase.co',
-    'https://abc.supabase.co/x', 'https://abc.supabase.co/?a=1', 'ftp://abc.supabase.co', 'lixo', '', null, 5,
+    'https://abc.supabase.co/?a=1', 'ftp://abc.supabase.co', 'lixo', '', null, 5,
     'https://x.evil.com/.supabase.co',
   ]) assert.equal(normalizeSupabaseUrl(bad), null, String(bad));
 });
@@ -50,4 +51,12 @@ test('config.example.json tem a URL do projeto e chave vazia; .gitignore ignora 
   assert.equal(ex.supabaseUrl, 'https://jdipignyikikagjvynve.supabase.co');
   assert.equal(ex.anonKey, '');
   assert.match(fs.readFileSync(path.join(root, '.gitignore'), 'utf8'), /^config\.local\.json$/m);
+});
+
+test('config tolera BOM do Bloco de Notas e URL com /rest/v1/', () => {
+  const { loadConfig } = require('../../src/main/config');
+  const body = '﻿' + JSON.stringify({ supabaseUrl: 'https://abcxyz.supabase.co/rest/v1/', anonKey: 'eyJabc.def.ghi' });
+  const fakeFs = { statSync: () => ({ isFile: () => true, size: body.length }), readFileSync: () => body };
+  const c = loadConfig({ env: {}, fs: fakeFs, dir: '/x', warn: () => {} });
+  require('node:assert').deepStrictEqual(c, { supabaseUrl: 'https://abcxyz.supabase.co', anonKey: 'eyJabc.def.ghi' });
 });

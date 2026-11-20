@@ -14,7 +14,7 @@ function normalizeSupabaseUrl(value) {
   try { u = new URL(value.trim()); } catch { return null; }
   if (u.protocol !== 'https:') return null;
   if (u.username || u.password || u.port || u.search || u.hash) return null;
-  if (u.pathname !== '/') return null;
+  // Aceita a URL colada com caminho (ex.: .../rest/v1/); só a origem é usada.
   if (!HOST_RE.test(u.hostname)) return null;
   return `https://${u.hostname}`;
 }
@@ -27,16 +27,20 @@ function isValidAnonKey(k) {
  * Lê GHOST_RANK_SUPABASE_URL / GHOST_RANK_SUPABASE_ANON_KEY ou config.local.json.
  * Qualquer problema devolve null (o rastreador funciona sem contas).
  */
-function loadConfig({ env = process.env, fs = nodeFs, dir = path.join(__dirname, '..', '..') } = {}) {
+function loadConfig({ env = process.env, fs = nodeFs, dir = path.join(__dirname, '..', '..'), warn = (m) => process.stderr.write(m + '\n') } = {}) {
   try {
     let file = {};
     const needFile = !(env && env.GHOST_RANK_SUPABASE_URL && env.GHOST_RANK_SUPABASE_ANON_KEY);
     if (needFile) {
       try {
         const p = path.join(dir, 'config.local.json');
-        const st = fs.statSync(p);
-        if (st.isFile() && st.size <= MAX_CONFIG_BYTES) {
-          const parsed = JSON.parse(fs.readFileSync(p, 'utf8'));
+        let st = null;
+        try { st = fs.statSync(p); } catch { warn('[config] config.local.json não encontrado em ' + dir); }
+        if (st && st.isFile() && st.size <= MAX_CONFIG_BYTES) {
+          // O Bloco de Notas pode salvar com BOM (\uFEFF), que quebra o JSON.parse.
+          const text = fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '');
+          let parsed = null;
+          try { parsed = JSON.parse(text); } catch { warn('[config] config.local.json não é um JSON válido'); }
           if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) file = parsed;
         }
       } catch { file = {}; }
@@ -44,7 +48,8 @@ function loadConfig({ env = process.env, fs = nodeFs, dir = path.join(__dirname,
     const rawUrl = (env && env.GHOST_RANK_SUPABASE_URL) || file.supabaseUrl;
     const anonKey = (env && env.GHOST_RANK_SUPABASE_ANON_KEY) || file.anonKey;
     const supabaseUrl = normalizeSupabaseUrl(rawUrl);
-    if (!supabaseUrl || !isValidAnonKey(anonKey)) return null;
+    if (!supabaseUrl) { if (rawUrl) warn('[config] supabaseUrl inválida (use https://<projeto>.supabase.co)'); return null; }
+    if (!isValidAnonKey(anonKey)) { warn('[config] anonKey ausente ou inválida'); return null; }
     return { supabaseUrl, anonKey };
   } catch {
     return null;
