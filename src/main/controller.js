@@ -40,6 +40,10 @@ function createController({
   manualCooldownMs = 30000,
   onUpdate = () => {},
   getAuthView = null,
+  getGroupView = null,
+  getChatView = null,
+  getVoiceView = null,
+  publishSnapshot = null,
   timers = { setInterval: (...a) => setInterval(...a), clearInterval: (...a) => clearInterval(...a) },
 } = {}) {
   const nowSec = () => Math.floor(now() / 1000);
@@ -69,7 +73,45 @@ function createController({
       const a = getAuthView && getAuthView();
       if (a && typeof a === 'object') return a;
     } catch { /* cai no padrão */ }
-    return { status: 'unconfigured', email: null, displayName: null, mmrVisibility: null };
+    return { status: 'unconfigured', email: null, displayName: null, mmrVisibility: null, steamLinked: false };
+  }
+
+  function groupView() {
+    try {
+      const g = getGroupView && getGroupView();
+      if (g && typeof g === 'object') return g;
+    } catch { /* cai no padrão */ }
+    return null;
+  }
+
+  function chatView() {
+    try {
+      const c = getChatView && getChatView();
+      if (c && typeof c === 'object' && Array.isArray(c.messages)) return c;
+    } catch { /* cai no padrão */ }
+    return { messages: [], status: 'idle' };
+  }
+
+  function voiceView() {
+    try {
+      const v = getVoiceView && getVoiceView();
+      if (v && typeof v === 'object') return { available: v.available === true };
+    } catch { /* cai no padrão */ }
+    return { available: false };
+  }
+
+  /** Publica o MMR para o grupo sem bloquear nem quebrar o rastreador. */
+  function publish() {
+    if (!state || typeof publishSnapshot !== 'function' || !groupView()) return;
+    const fail = (err) => {
+      const c = err && typeof err.code === 'string' && /^[a-z_]{1,32}$/.test(err.code) ? err.code : 'erro';
+      console.warn('[grupo] MMR não publicado:', c);
+    };
+    try {
+      Promise.resolve(publishSnapshot(tracker.summarize(state))).catch(fail);
+    } catch (err) {
+      fail(err);
+    }
   }
 
   function getView() {
@@ -81,6 +123,9 @@ function createController({
       summary: state ? tracker.summarize(state) : null,
       heroes: { ...heroes },
       auth: authView(),
+      group: groupView(),
+      chat: chatView(),
+      voice: voiceView(),
       sync: {
         status: syncing ? 'syncing' : (lastError ? 'error' : 'idle'),
         lastSyncAt,
@@ -155,6 +200,7 @@ function createController({
     lastError = null;
     lastSyncAt = now();
     if (timer) nextSyncAt = now() + syncIntervalMs;
+    publish();
     await ensureHeroes();
     return getView();
   }
@@ -172,6 +218,7 @@ function createController({
       await ensureHeroes();
       lastError = null;
       lastSyncAt = now();
+      publish();
     } catch (err) {
       lastError = friendlyError(err);
     } finally {
@@ -203,6 +250,7 @@ function createController({
       state = prev;
       throw new UserInputError('Não foi possível salvar os dados no computador.');
     }
+    publish();
     return getView();
   }
 
@@ -223,6 +271,7 @@ function createController({
       state = prev;
       throw new UserInputError('Não foi possível salvar os dados no computador.');
     }
+    if (patch.goalMmr !== undefined) publish(); // a meta aparece no ranking do grupo
     return getView();
   }
 
@@ -250,8 +299,13 @@ function createController({
     nextSyncAt = null;
   }
 
+  /** Resumo atual do rastreador (null sem configuração). Usado para publicar ao entrar num grupo. */
+  function getSummary() {
+    return state ? tracker.summarize(state) : null;
+  }
+
   return {
-    getView, setup, sync, correctMmr, updateSettings, reset, start, stop,
+    getSummary, getView, setup, sync, correctMmr, updateSettings, reset, start, stop,
   };
 }
 

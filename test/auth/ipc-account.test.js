@@ -51,7 +51,7 @@ test('sem config: View.auth = unconfigured e canais de conta recusam sem quebrar
   const e = build({ routes: [], configured: false });
   const v = await e.call(ipc.CHANNELS.getView);
   assert.equal(v.ok, true);
-  assert.deepEqual(v.view.auth, { status: 'unconfigured', email: null, displayName: null, mmrVisibility: null });
+  assert.deepEqual(v.view.auth, { status: 'unconfigured', email: null, displayName: null, mmrVisibility: null, steamLinked: false });
   assert.equal(v.view.configured, false); // rastreador independente
   const r = await e.call(ipc.CHANNELS.signIn, { email: 'a@b.co', password: 'x' });
   assert.deepEqual(r, { ok: false, error: 'Contas indisponíveis neste computador.' });
@@ -83,7 +83,7 @@ test('login -> view signed_in com perfil; sessão cifrável salva; logout limpa'
   ] });
   const r = await e.call(ipc.CHANNELS.signIn, { email: 'ana@example.com', password: PASS });
   assert.equal(r.ok, true);
-  assert.deepEqual(r.view.auth, { status: 'signed_in', email: 'ana@example.com', displayName: 'Fantasma', mmrVisibility: 'friends' });
+  assert.deepEqual(r.view.auth, { status: 'signed_in', email: 'ana@example.com', displayName: 'Fantasma', mmrVisibility: 'friends', steamLinked: false });
   assert.ok(fs.existsSync(path.join(e.dir, 'ghost-rank-session.dat')));
   const out = await e.call(ipc.CHANNELS.signOut);
   assert.equal(out.ok, true);

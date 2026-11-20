@@ -23,6 +23,9 @@ function build() {
   let html = fs.readFileSync(src, 'utf8');
   html = replaceOnce(html, '  <title>Ghost Rank</title>\n', `  <meta http-equiv="Content-Security-Policy" content="${CSP}">\n  <title>Ghost Rank (prévia)</title>\n`);
   html = replaceOnce(html, 'href="styles.css"', 'href="../src/renderer/styles.css"');
+  // LiveKit de verdade não roda na prévia: entra um falso local (preview/fake-livekit.js), sem rede.
+  html = replaceOnce(html, '  <script src="vendor/livekit-client.umd.js"></script>', '  <script src="fake-livekit.js"></script>');
+  html = replaceOnce(html, '  <script src="voice.js"></script>', '  <script src="../src/renderer/voice.js"></script>');
   html = replaceOnce(html, '  <script src="app.js"></script>', '  <script src="mock-bridge.js"></script>\n  <script src="../src/renderer/app.js"></script>');
   return html;
 }

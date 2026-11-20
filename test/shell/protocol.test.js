@@ -53,7 +53,7 @@ test('bloqueia host e esquema errados', () => {
 
 test('CSP e cabeçalhos', () => {
   assert.match(CSP, /default-src 'none'/);
-  assert.match(CSP, /connect-src 'none'/);
+  assert.match(CSP, /connect-src wss:\/\/\*\.livekit\.cloud https:\/\/\*\.livekit\.cloud(;|$)/);
   assert.match(CSP, /frame-ancestors 'none'/);
   assert.equal(SECURITY_HEADERS['X-Content-Type-Options'], 'nosniff');
   assert.equal(SECURITY_HEADERS['Referrer-Policy'], 'no-referrer');

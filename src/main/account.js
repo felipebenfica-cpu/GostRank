@@ -14,12 +14,31 @@ function toUserError(err) {
   return err;
 }
 
-function createAccountService({ config = null, auth = null, session = null, profile = null, onChange = () => {} } = {}) {
+function createAccountService({
+  config = null, auth = null, session = null, profile = null, onChange = () => {}, onSessionChange = () => {},
+} = {}) {
   const available = Boolean(config && auth && session && profile);
-  let cache = null; // { userId, displayName, mmrVisibility }
+  let cache = null; // { userId, displayName, mmrVisibility, steamLinked }
 
   function emit() {
     try { onChange(); } catch { /* o consumidor não pode quebrar o serviço */ }
+  }
+
+  /** Avisa grupo/chat que a sessão mudou (true = entrou, false = saiu). */
+  function sessionChanged(signedIn) {
+    try {
+      const r = onSessionChange(signedIn);
+      if (r && typeof r.catch === 'function') r.catch(() => {});
+    } catch { /* o consumidor não pode quebrar o serviço */ }
+  }
+
+  function toCache(userId, p) {
+    return {
+      userId,
+      displayName: p.displayName,
+      mmrVisibility: p.mmrVisibility,
+      steamLinked: p.steamAccountId !== null && p.steamAccountId !== undefined,
+    };
   }
 
   function need() {
@@ -27,15 +46,16 @@ function createAccountService({ config = null, auth = null, session = null, prof
   }
 
   function getAuthView() {
-    if (!available) return { status: 'unconfigured', email: null, displayName: null, mmrVisibility: null };
+    if (!available) return { status: 'unconfigured', email: null, displayName: null, mmrVisibility: null, steamLinked: false };
     const s = session.peek();
-    if (!s) return { status: 'signed_out', email: null, displayName: null, mmrVisibility: null };
+    if (!s) return { status: 'signed_out', email: null, displayName: null, mmrVisibility: null, steamLinked: false };
     const mine = cache && cache.userId === s.user.id ? cache : null;
     return {
       status: 'signed_in',
       email: s.user.email || null,
       displayName: mine ? mine.displayName : null,
       mmrVisibility: mine ? mine.mmrVisibility : null,
+      steamLinked: mine ? mine.steamLinked : false,
     };
   }
 
@@ -47,7 +67,7 @@ function createAccountService({ config = null, auth = null, session = null, prof
       const p = await profile.get();
       const cur = session.peek();
       if (cur && cur.user.id === s.user.id) {
-        cache = { userId: cur.user.id, displayName: p.displayName, mmrVisibility: p.mmrVisibility };
+        cache = toCache(cur.user.id, p);
       }
     } catch { /* perfil é opcional na tela */ }
     emit();
@@ -55,6 +75,10 @@ function createAccountService({ config = null, auth = null, session = null, prof
 
   async function run(fn) {
     try { return await fn(); } catch (err) { throw toUserError(err); }
+  }
+
+  function isSignedIn() {
+    return available && Boolean(session.peek());
   }
 
   function needEmail(v) {
@@ -81,6 +105,7 @@ function createAccountService({ config = null, auth = null, session = null, prof
     session.set(s);
     cache = null;
     await refreshProfile();
+    sessionChanged(true);
     return { ok: true };
   }
 
@@ -89,6 +114,7 @@ function createAccountService({ config = null, auth = null, session = null, prof
     const s = session.peek();
     session.clear();
     cache = null;
+    sessionChanged(false);
     if (s) {
       try { await auth.signOut(s.accessToken); } catch { /* a sessão local já foi apagada */ }
     }
@@ -106,7 +132,7 @@ function createAccountService({ config = null, auth = null, session = null, prof
     if (!session.peek()) throw new UserInputError('Entre na sua conta primeiro.');
     const p = await run(() => profile.update(patch));
     const s = session.peek();
-    if (s) cache = { userId: s.user.id, displayName: p.displayName, mmrVisibility: p.mmrVisibility };
+    if (s) cache = toCache(s.user.id, p);
     return p;
   }
 
@@ -116,11 +142,12 @@ function createAccountService({ config = null, auth = null, session = null, prof
     await run(() => profile.deleteAccount());
     session.clear();
     cache = null;
+    sessionChanged(false);
     return { ok: true };
   }
 
   return {
-    available, getAuthView, refreshProfile, signUp, signIn, signOut, recover, updateProfile, deleteAccount,
+    available, isSignedIn, getAuthView, refreshProfile, signUp, signIn, signOut, recover, updateProfile, deleteAccount,
   };
 }
 

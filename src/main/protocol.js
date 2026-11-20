@@ -25,11 +25,18 @@ const CSP = [
   "style-src 'self'",
   "img-src 'self' data:",
   "font-src 'self'",
-  "connect-src 'none'",
+  'connect-src wss://*.livekit.cloud https://*.livekit.cloud',
+  "media-src 'self' blob: mediastream:",
   "base-uri 'none'",
   "form-action 'none'",
   "frame-ancestors 'none'",
 ].join('; ');
+
+// Única rota para node_modules: o build UMD do livekit-client (servido localmente, nunca CDN).
+const VENDOR_PREFIX = '/vendor/';
+const LIVEKIT_VENDOR_PATH = '/vendor/livekit-client.umd.js';
+const LIVEKIT_VENDOR_FILE = path.join(__dirname, '..', '..', 'node_modules', 'livekit-client', 'dist', 'livekit-client.umd.js');
+const DEFAULT_VENDOR_FILES = Object.freeze({ [LIVEKIT_VENDOR_PATH]: LIVEKIT_VENDOR_FILE });
 
 const SECURITY_HEADERS = Object.freeze({
   'Content-Security-Policy': CSP,
@@ -87,6 +94,48 @@ function resolveRequestPath(urlString, rootDir) {
   return { ok: true, filePath, ext };
 }
 
+/**
+ * Rotas /vendor/: só caminhos exatos da tabela (sem decodificar, sem ".."), qualquer outro → 404.
+ * @returns {null | { ok: true, filePath, ext } | { ok: false, status }} null = não é rota vendor.
+ */
+function resolveVendorPath(urlString, vendorFiles = DEFAULT_VENDOR_FILES) {
+  let url;
+  try { url = new URL(urlString); } catch { return null; }
+  if (url.protocol !== `${SCHEME}:` || url.hostname !== HOST) return null;
+  const raw = url.pathname;
+  if (!raw.toLowerCase().startsWith(VENDOR_PREFIX) && !/^\/vendor(%2f|$)/i.test(raw)) return null;
+  if (url.search || url.hash) return { ok: false, status: 404 };
+  if (!Object.prototype.hasOwnProperty.call(vendorFiles, raw)) return { ok: false, status: 404 };
+  return { ok: true, filePath: vendorFiles[raw], ext: path.extname(raw).toLowerCase() };
+}
+
+/** O arquivo do livekit-client existe (voz disponível)? */
+function vendorExists(filePath = LIVEKIT_VENDOR_FILE, fsImpl = fs) {
+  try { return fsImpl.statSync(filePath).isFile(); } catch { return false; }
+}
+
+function textResponse(body, status) {
+  return new Response(body, {
+    status,
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', ...SECURITY_HEADERS },
+  });
+}
+
+/** Atende uma requisição app://. Exportado para teste. */
+async function handleRequest(urlString, rootDir, { vendorFiles = DEFAULT_VENDOR_FILES, readFile = fs.promises.readFile } = {}) {
+  const vendor = resolveVendorPath(urlString, vendorFiles);
+  const resolved = vendor || resolveRequestPath(urlString, rootDir);
+  if (!resolved.ok) {
+    return textResponse(resolved.status === 404 ? 'Não encontrado' : 'Acesso negado', resolved.status);
+  }
+  try {
+    const data = await readFile(resolved.filePath);
+    return new Response(data, { status: 200, headers: buildHeaders(resolved.ext) });
+  } catch {
+    return textResponse('Não encontrado', 404);
+  }
+}
+
 function buildHeaders(ext) {
   return {
     'Content-Type': MIME_TYPES[ext] || 'application/octet-stream',
@@ -109,24 +158,7 @@ function registerScheme() {
 /** Registra o handler do protocolo. Chamar depois de app.whenReady(). */
 function registerHandler(rootDir) {
   const { protocol } = require('electron');
-  protocol.handle(SCHEME, async (request) => {
-    const resolved = resolveRequestPath(request.url, rootDir);
-    if (!resolved.ok) {
-      return new Response('Acesso negado', {
-        status: resolved.status,
-        headers: { 'Content-Type': 'text/plain; charset=utf-8', ...SECURITY_HEADERS },
-      });
-    }
-    try {
-      const data = await fs.promises.readFile(resolved.filePath);
-      return new Response(data, { status: 200, headers: buildHeaders(resolved.ext) });
-    } catch {
-      return new Response('Não encontrado', {
-        status: 404,
-        headers: { 'Content-Type': 'text/plain; charset=utf-8', ...SECURITY_HEADERS },
-      });
-    }
-  });
+  protocol.handle(SCHEME, (request) => handleRequest(request.url, rootDir));
 }
 
 module.exports = {
@@ -136,7 +168,14 @@ module.exports = {
   CSP,
   SECURITY_HEADERS,
   MIME_TYPES,
+  VENDOR_PREFIX,
+  LIVEKIT_VENDOR_PATH,
+  LIVEKIT_VENDOR_FILE,
+  DEFAULT_VENDOR_FILES,
   resolveRequestPath,
+  resolveVendorPath,
+  vendorExists,
+  handleRequest,
   buildHeaders,
   registerScheme,
   registerHandler,

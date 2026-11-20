@@ -33,3 +33,93 @@ Se precisar rodar de novo, tudo bem: o arquivo foi feito para poder ser executad
 - Cria o perfil automaticamente quando alguem se cadastra (apelido inicial = parte do e-mail antes do @, ate 24 letras).
 - Cria a funcao `delete_my_account()`, que permite a pessoa apagar a propria conta (e o perfil junto).
 - Visitantes sem login (`anon`) nao tem acesso a tabela.
+
+---
+
+# Etapas 2, 3 e 4: grupo, chat, voz e Steam
+
+Faca estes passos **depois** do `0001_perfis.sql`, uma unica vez.
+
+## 4. Aplicar o arquivo do grupo (0002)
+
+1. No painel do Supabase, abra **SQL Editor** -> **New query**.
+2. Abra o arquivo `supabase/migrations/0002_grupo.sql`, copie **todo** o conteudo e cole na janela.
+3. Clique em **Run**. Deve aparecer "Success. No rows returned".
+4. Em **Table Editor**, confira que existem as tabelas `groups`, `group_members`, `group_invites`, `mmr_snapshots`, `messages` e `steam_link_states`, todas com o cadeado de RLS **ligado**.
+
+Pode rodar de novo sem problema. Se aparecer erro em vermelho, nao mexa em mais nada e envie o texto do erro.
+
+### O que o 0002 faz
+
+- Cada pessoa pode estar em **um** grupo so, com no maximo **10** membros. O grupo tem um dono.
+- So o dono cria convites. O codigo tem 10 letras/numeros (sem letras que confundem, como O/0 e I/1), vale **7 dias** e serve para ate **5** pessoas.
+- Codigo errado, vencido ou ja usado ate o limite da a **mesma** mensagem de erro (para ninguem ficar adivinhando).
+- Quando o dono sai, o membro mais antigo vira dono. Quando o ultimo sai, o grupo e apagado.
+- Membros veem o grupo, os colegas, o apelido deles e as mensagens do chat. Quem esta fora nao ve nada.
+- O resumo do MMR de alguem so aparece para os colegas se a privacidade dessa pessoa for "grupo" ou "amigos". Com "ninguem", fica escondido.
+- Chat: no maximo 10 mensagens a cada 10 segundos por pessoa. Mensagens nao podem ser editadas; cada um apaga so as suas.
+- Apagar a conta apaga tudo da pessoa (perfil, mensagens, resumo de MMR). Se ela era dona de um grupo, a posse passa para o membro mais antigo.
+
+## 5. Publicar as funcoes do servidor (Edge Functions)
+
+Sao duas: `livekit-token` (entrega a chave da sala de voz) e `steam-link` (vincula a conta Steam).
+
+### Pelo painel (sem instalar nada)
+
+O editor do painel trabalha melhor com **um arquivo so**. Por isso o repositorio ja traz cada funcao pronta num unico arquivo, com tudo embutido:
+
+- `supabase/functions/livekit-token/bundle.ts`
+- `supabase/functions/steam-link/bundle.ts`
+
+Para cada uma das duas funcoes:
+
+1. No menu da esquerda, clique em **Edge Functions**.
+2. Clique em **Deploy a new function** e escolha **Via Editor**.
+3. No nome da funcao, digite exatamente `livekit-token` (ou `steam-link` na segunda vez).
+4. Apague o codigo de exemplo que aparece no editor (arquivo `index.ts`).
+5. Abra o `bundle.ts` correspondente deste repositorio, copie **todo** o conteudo e cole no lugar.
+6. Clique em **Deploy function** e espere terminar.
+7. Abra a funcao publicada, va em **Details** (ou **Settings**) e **DESLIGUE** a opcao **Verify JWT** (as vezes chamada "Enforce JWT verification"). Clique em salvar.
+   - Isso e necessario: a `livekit-token` confere o login ela mesma, e o retorno da Steam para a `steam-link` vem do navegador, sem login.
+
+Nao cole os arquivos `index.ts` direto no painel: eles importam arquivos da pasta `_shared`, que o painel nao teria. Os `bundle.ts` ja tem esses arquivos dentro.
+
+Se alguem mudar `index.ts` ou algo em `_shared`, gere os `bundle.ts` de novo com:
+
+```
+node supabase/functions/build-bundles.js
+```
+
+(Os testes avisam se os `bundle.ts` estiverem desatualizados.)
+
+### Pela linha de comando (opcional, para quem usa a CLI do Supabase)
+
+```
+supabase functions deploy livekit-token --no-verify-jwt
+supabase functions deploy steam-link --no-verify-jwt
+```
+
+A CLI leva a pasta `_shared` junto automaticamente, entao ela usa os `index.ts`.
+
+## 6. Cadastrar os segredos da voz (LiveKit)
+
+As chaves do LiveKit ficam **somente** no Supabase. **Nunca** coloque essas chaves no app, no `config.json` ou em mensagens.
+
+1. No painel do Supabase, va em **Edge Functions** -> **Secrets** (em alguns paineis: **Project Settings** -> **Edge Functions**).
+2. Adicione tres segredos (botao **Add new secret**):
+
+| Nome | Valor |
+|---|---|
+| `LIVEKIT_URL` | o endereco do projeto no LiveKit Cloud, comecando com `wss://` (ex.: `wss://seu-projeto.livekit.cloud`) |
+| `LIVEKIT_API_KEY` | a "API Key" do LiveKit |
+| `LIVEKIT_API_SECRET` | o "API Secret" do LiveKit |
+
+3. Salve. Nao precisa publicar as funcoes de novo.
+
+Enquanto esses segredos nao existirem, a voz responde "voz nao configurada" e o resto do app continua funcionando.
+
+`SUPABASE_URL`, `SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY` ja vem prontos nas funcoes; nao cadastre nem copie essas chaves para lugar nenhum. A chave `service_role` e usada so dentro das funcoes e nunca e devolvida ao app.
+
+### Pagina de retorno da Steam
+
+Depois de entrar na Steam, o navegador mostra uma mensagem curta (por exemplo, "Steam vinculada. Pode voltar ao Ghost Rank."). O Supabase so permite paginas HTML em projetos com **dominio proprio**; sem isso, a funcao responde em texto simples, o que funciona do mesmo jeito. Se um dia o projeto tiver dominio proprio, da para cadastrar o segredo opcional `STEAM_LINK_HTML` = `true` para a resposta sair em HTML.

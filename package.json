@@ -12,6 +12,9 @@
   "engines": {
     "node": ">=22"
   },
+  "dependencies": {
+    "livekit-client": "^2.15.0"
+  },
   "devDependencies": {
     "electron": "^45.3.3"
   }

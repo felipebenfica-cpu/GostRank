@@ -15,6 +15,17 @@ contextBridge.exposeInMainWorld('ghostRank', {
   recover: (data) => ipcRenderer.invoke('gr:auth:recover', data),
   updateProfile: (data) => ipcRenderer.invoke('gr:profile:update', data),
   deleteAccount: () => ipcRenderer.invoke('gr:account:delete', { confirm: true }),
+  createGroup: (name) => ipcRenderer.invoke('gr:group:create', { name }),
+  joinGroup: (code) => ipcRenderer.invoke('gr:group:join', { code }),
+  leaveGroup: () => ipcRenderer.invoke('gr:group:leave', { confirm: true }),
+  createInvite: () => ipcRenderer.invoke('gr:group:invite', {}),
+  removeMember: (userId) => ipcRenderer.invoke('gr:group:remove', { userId }),
+  refreshGroup: () => ipcRenderer.invoke('gr:group:refresh', {}),
+  sendMessage: (body) => ipcRenderer.invoke('gr:chat:send', { body }),
+  voiceToken: () => ipcRenderer.invoke('gr:voice:token', {}),
+  listScreenSources: () => ipcRenderer.invoke('gr:voice:listSources', {}),
+  pickScreenSource: (sourceId) => ipcRenderer.invoke('gr:voice:pickSource', { sourceId }),
+  linkSteam: () => ipcRenderer.invoke('gr:steam:link', {}),
   onUpdate: (cb) => {
     if (typeof cb !== 'function') return () => {};
     const listener = (_event, view) => cb(view);

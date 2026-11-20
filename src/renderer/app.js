@@ -4,6 +4,7 @@
   'use strict';
 
   var bridge = window.ghostRank;
+  var voice = window.GhostVoice || null;
   var view = null;
   var syncing = false; // sincronização manual em andamento nesta tela
 
@@ -176,6 +177,9 @@
 
     if (configured && view.summary) renderDashboard();
     renderAccount();
+    renderTabs();
+    renderGroup();
+    if (voice) voice.update(view);
     updateTimers();
   }
 
@@ -581,6 +585,11 @@
       els.btnAccount.setAttribute('aria-label', 'Minha conta, ' + name);
       els.btnAccount.title = name;
     }
+    var linked = !!a.steamLinked;
+    show($('steam-linked'), signedIn && linked);
+    show($('btn-link-steam'), signedIn && !linked);
+    show($('steam-help'), signedIn && !linked);
+    if (linked) setMessage($('steam-note'), '');
   }
 
   var ac = {
@@ -850,6 +859,609 @@
     });
   });
 
+  /* ---------- Steam ---------- */
+
+  $('btn-link-steam').addEventListener('click', function () {
+    var btn = $('btn-link-steam');
+    var note = $('steam-note');
+    setMessage(ac.account.error, '');
+    setMessage(note, '');
+    btn.disabled = true;
+    call(function () { return bridge.linkSteam(); }).then(function (res) {
+      btn.disabled = false;
+      if (res && res.ok) {
+        setMessage(note, 'Abrimos o Steam no seu navegador. Entre por lá e depois volte para o Ghost Rank.');
+      } else {
+        setMessage(ac.account.error, (res && res.error) || 'Não deu para abrir o Steam. Tente de novo.');
+      }
+    });
+  });
+
+  /* ---------- abas ---------- */
+
+  var tabs = {
+    mmr: { tab: $('tab-mmr'), panel: $('panel-mmr') },
+    group: { tab: $('tab-group'), panel: $('panel-group') }
+  };
+  var tabOrder = ['mmr', 'group'];
+  var currentTab = 'mmr';
+
+  function groupAllowed() {
+    var a = authInfo();
+    return !!(a && a.status === 'signed_in');
+  }
+
+  function selectTab(name, focus) {
+    if (name === 'group' && !groupAllowed()) return;
+    var changed = currentTab !== name;
+    currentTab = name;
+    tabOrder.forEach(function (k) {
+      var on = k === name;
+      tabs[k].tab.setAttribute('aria-selected', on ? 'true' : 'false');
+      tabs[k].tab.tabIndex = on ? 0 : -1;
+      show(tabs[k].panel, on);
+    });
+    if (focus) tabs[name].tab.focus();
+    if (changed && name === 'group') scrollChatToEnd();
+  }
+
+  function renderTabs() {
+    show($('tabs-bar'), true);
+    var allowed = groupAllowed();
+    var t = tabs.group.tab;
+    if (allowed) {
+      t.removeAttribute('aria-disabled');
+      t.removeAttribute('aria-describedby');
+    } else {
+      t.setAttribute('aria-disabled', 'true');
+      t.setAttribute('aria-describedby', 'tab-group-hint');
+    }
+    show($('tab-group-hint'), !allowed);
+    if (!allowed && currentTab === 'group') selectTab('mmr', false);
+    else selectTab(currentTab, false);
+  }
+
+  tabOrder.forEach(function (k, i) {
+    var t = tabs[k].tab;
+    t.addEventListener('click', function () { selectTab(k, false); });
+    t.addEventListener('keydown', function (ev) {
+      var next = null;
+      if (ev.key === 'ArrowRight') next = (i + 1) % tabOrder.length;
+      else if (ev.key === 'ArrowLeft') next = (i - 1 + tabOrder.length) % tabOrder.length;
+      else if (ev.key === 'Home') next = 0;
+      else if (ev.key === 'End') next = tabOrder.length - 1;
+      if (next === null) return;
+      ev.preventDefault();
+      var name = tabOrder[next];
+      // aba desabilitada recebe foco (para ouvir a dica), mas não abre
+      if (name === 'group' && !groupAllowed()) tabs[name].tab.focus();
+      else selectTab(name, true);
+    });
+  });
+
+  /* ---------- grupo ---------- */
+
+  var INVITE_ALPHABET = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{10}$/;
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+  var ICONS = {
+    on_track: [['polyline', { points: '3 17 9 11 13 15 21 7' }], ['polyline', { points: '15 7 21 7 21 13' }]],
+    unreachable: [['path', { d: 'M12 3 2.5 20h19L12 3z' }], ['line', { x1: 12, y1: 10, x2: 12, y2: 14.5 }], ['line', { x1: 12, y1: 17.4, x2: 12, y2: 17.5 }]],
+    insufficient_data: [['circle', { cx: 12, cy: 12, r: 9 }], ['line', { x1: 12, y1: 11, x2: 12, y2: 16 }], ['line', { x1: 12, y1: 7.9, x2: 12, y2: 8 }]],
+    goal_reached: [['circle', { cx: 12, cy: 12, r: 9 }], ['polyline', { points: '8 12.5 11 15.5 16 9.5' }]],
+    hidden: [['path', { d: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z' }], ['circle', { cx: 12, cy: 12, r: 3 }], ['line', { x1: 4, y1: 4, x2: 20, y2: 20 }]]
+  };
+  var STATUS_LABEL = {
+    goal_reached: 'Meta alcançada',
+    on_track: 'No caminho da meta',
+    unreachable: 'Com esse winrate a meta não chega',
+    insufficient_data: 'Poucos jogos recentes para estimar'
+  };
+
+  function icon(name, size, cls) {
+    var svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('width', String(size || 18));
+    svg.setAttribute('height', String(size || 18));
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    svg.setAttribute('class', cls || 'btn-icon');
+    (ICONS[name] || []).forEach(function (part) {
+      var node = document.createElementNS(SVG_NS, part[0]);
+      Object.keys(part[1]).forEach(function (k) { node.setAttribute(k, String(part[1][k])); });
+      svg.appendChild(node);
+    });
+    return svg;
+  }
+
+  var g = {
+    none: $('group-none'),
+    view: $('group-view'),
+    name: $('group-name'),
+    meta: $('group-meta'),
+    error: $('group-error'),
+    btnInvite: $('btn-invite'),
+    btnLeave: $('btn-leave'),
+    inviteBox: $('invite-box'),
+    inviteCode: $('invite-code'),
+    inviteExpiry: $('invite-expiry'),
+    inviteStatus: $('invite-status'),
+    btnCopy: $('btn-copy-invite'),
+    ranking: $('ranking-list'),
+    createForm: $('form-create-group'),
+    createName: $('create-group-name'),
+    createError: $('create-group-error'),
+    createSubmit: $('create-group-submit'),
+    joinForm: $('form-join-group'),
+    joinCode: $('join-group-code'),
+    joinError: $('join-group-error'),
+    joinSubmit: $('join-group-submit'),
+    dlgLeave: $('dlg-leave'),
+    formLeave: $('form-leave'),
+    leaveText: $('dlg-leave-text'),
+    leaveError: $('leave-error'),
+    leaveSubmit: $('leave-submit'),
+    dlgRemove: $('dlg-remove'),
+    formRemove: $('form-remove'),
+    removeTitle: $('dlg-remove-title'),
+    removeError: $('remove-error'),
+    removeSubmit: $('remove-submit')
+  };
+  var lastGroupId = null;
+  var removeTarget = null;
+  var removeReturnFocus = null;
+
+  function groupInfo() {
+    var gr = view && view.group;
+    return groupAllowed() && gr && typeof gr === 'object' ? gr : null;
+  }
+
+  function memberName(m) {
+    return (m && typeof m.displayName === 'string' && m.displayName) ? m.displayName : 'Fantasma sem nome';
+  }
+
+  function renderGroup() {
+    var gr = groupInfo();
+    show(g.none, groupAllowed() && !gr);
+    show(g.view, !!gr);
+    var gid = gr ? gr.id : null;
+    if (gid !== lastGroupId) {
+      // trocou de grupo (ou saiu): limpa convite, mensagens e chat anterior
+      lastGroupId = gid;
+      show(g.inviteBox, false);
+      setMessage(g.error, '');
+      chatState.signature = '';
+      chatState.lastId = null;
+      chatState.forceScroll = true;
+    }
+    if (!gr) return;
+
+    var members = Array.isArray(gr.members) ? gr.members : [];
+    g.name.textContent = gr.name || 'Grupo';
+    g.meta.textContent = members.length + ' de 10 ' + (members.length === 1 ? 'membro' : 'membros') +
+      (gr.isOwner ? ' · você é o dono' : '');
+    show(g.btnInvite, !!gr.isOwner);
+    if (!gr.isOwner) show(g.inviteBox, false);
+    renderRanking(gr, members);
+    renderChat();
+  }
+
+  function sortedMembers(members) {
+    return members.slice().sort(function (a, b) {
+      var am = a.mmr && typeof a.mmr.progress === 'number';
+      var bm = b.mmr && typeof b.mmr.progress === 'number';
+      if (am !== bm) return am ? -1 : 1;
+      if (am && b.mmr.progress !== a.mmr.progress) return b.mmr.progress - a.mmr.progress;
+      if (am && b.mmr.current !== a.mmr.current) return b.mmr.current - a.mmr.current;
+      return memberName(a).localeCompare(memberName(b), 'pt-BR');
+    });
+  }
+
+  function renderRanking(gr, members) {
+    g.ranking.textContent = '';
+    sortedMembers(members).forEach(function (m, idx) {
+      var li = el('li', 'rank-item');
+      if (m.isMe) li.classList.add('is-me');
+
+      li.appendChild(el('span', 'rank-pos', (idx + 1) + 'º'));
+
+      var body = el('div', 'rank-body');
+      var head = el('div', 'rank-head');
+      head.appendChild(el('span', 'rank-name', memberName(m)));
+      if (m.isMe) head.appendChild(el('span', 'tag tag-me', 'você'));
+      if (m.isOwner) head.appendChild(el('span', 'tag', 'dono'));
+      body.appendChild(head);
+
+      var mmr = m.mmr;
+      if (mmr && typeof mmr.progress === 'number') {
+        var pct = Math.floor(Math.max(0, Math.min(1, mmr.progress)) * 100);
+        var line = el('p', 'rank-mmr');
+        line.appendChild(el('strong', null, num(mmr.current)));
+        line.appendChild(el('span', 'rank-arrow', ' → '));
+        line.appendChild(document.createTextNode(num(mmr.goal) + ' MMR'));
+        body.appendChild(line);
+
+        var bar = el('div', 'rank-progress');
+        var track = el('div', 'mini-progress');
+        track.setAttribute('aria-hidden', 'true');
+        var fill = el('div', 'mini-progress-fill');
+        fill.style.setProperty('--progress', String(pct));
+        track.appendChild(fill);
+        bar.appendChild(track);
+        bar.appendChild(el('span', 'rank-pct', pct + '% da meta'));
+        body.appendChild(bar);
+
+        var st = el('p', 'rank-status');
+        var status = STATUS_LABEL[mmr.status] ? mmr.status : 'insufficient_data';
+        st.dataset.status = status;
+        st.appendChild(icon(status, 18, 'rank-icon'));
+        st.appendChild(el('span', null, STATUS_LABEL[status]));
+        body.appendChild(st);
+
+        var upd = toMs(mmr.updatedAt);
+        if (upd != null) {
+          var cap = el('p', 'caption rank-updated');
+          cap.appendChild(document.createTextNode('Atualizado '));
+          cap.appendChild(relTime(upd));
+          body.appendChild(cap);
+        }
+      } else {
+        var hid = el('p', 'rank-status rank-hidden');
+        hid.appendChild(icon('hidden', 18, 'rank-icon'));
+        hid.appendChild(el('span', null, 'MMR escondido'));
+        body.appendChild(hid);
+      }
+      li.appendChild(body);
+
+      if (gr.isOwner && !m.isMe) {
+        var rm = el('button', 'btn btn-small btn-quiet-danger', 'Remover');
+        rm.type = 'button';
+        rm.setAttribute('aria-haspopup', 'dialog');
+        rm.setAttribute('aria-label', 'Remover ' + memberName(m) + ' do grupo');
+        rm.addEventListener('click', function () { openRemove(m, rm); });
+        head.appendChild(rm);
+      }
+      g.ranking.appendChild(li);
+    });
+  }
+
+  // Criar grupo
+  g.createForm.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    setMessage(g.createError, '');
+    setInvalid(g.createName, '');
+    var name = g.createName.value.trim();
+    if (name.length < 2 || name.length > 32) {
+      setMessage(g.createError, 'O nome do grupo precisa ter de 2 a 32 caracteres.');
+      setInvalid(g.createName, 'x', 'create-group-error');
+      g.createName.focus();
+      return;
+    }
+    g.createSubmit.disabled = true;
+    g.createSubmit.textContent = 'Criando…';
+    call(function () { return bridge.createGroup(name); }).then(function (res) {
+      g.createSubmit.disabled = false;
+      g.createSubmit.textContent = 'Criar grupo';
+      var err = applyResult(res);
+      if (err) {
+        setMessage(g.createError, err);
+        setInvalid(g.createName, 'x', 'create-group-error');
+        g.createName.focus();
+      } else {
+        g.createForm.reset();
+        g.name.setAttribute('tabindex', '-1');
+        g.name.focus();
+      }
+    });
+  });
+
+  // Entrar com código: maiúsculas enquanto digita
+  g.joinCode.addEventListener('input', function () {
+    var start = g.joinCode.selectionStart;
+    var end = g.joinCode.selectionEnd;
+    var up = g.joinCode.value.toUpperCase().replace(/[\s-]+/g, '').slice(0, 10);
+    if (up !== g.joinCode.value) {
+      g.joinCode.value = up;
+      try { g.joinCode.setSelectionRange(Math.min(start, up.length), Math.min(end, up.length)); } catch (e) { /* ignora */ }
+    }
+  });
+
+  g.joinForm.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    setMessage(g.joinError, '');
+    setInvalid(g.joinCode, '');
+    var code = g.joinCode.value.replace(/[\s-]+/g, '').toUpperCase();
+    if (!INVITE_ALPHABET.test(code)) {
+      setMessage(g.joinError, 'O código tem 10 letras e números (sem I, L, O, 0 e 1), como K7M2QX9PTA.');
+      setInvalid(g.joinCode, 'x', 'join-group-error');
+      g.joinCode.focus();
+      return;
+    }
+    g.joinSubmit.disabled = true;
+    g.joinSubmit.textContent = 'Entrando…';
+    call(function () { return bridge.joinGroup(code); }).then(function (res) {
+      g.joinSubmit.disabled = false;
+      g.joinSubmit.textContent = 'Entrar no grupo';
+      var err = applyResult(res);
+      if (err) {
+        setMessage(g.joinError, err);
+        setInvalid(g.joinCode, 'x', 'join-group-error');
+        g.joinCode.focus();
+      } else {
+        g.joinForm.reset();
+        g.name.setAttribute('tabindex', '-1');
+        g.name.focus();
+      }
+    });
+  });
+
+  // Convidar
+  var dateFmt = new Intl.DateTimeFormat('pt-BR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+  g.btnInvite.addEventListener('click', function () {
+    setMessage(g.error, '');
+    g.btnInvite.disabled = true;
+    call(function () { return bridge.createInvite(); }).then(function (res) {
+      g.btnInvite.disabled = false;
+      if (!res || !res.ok || typeof res.code !== 'string') {
+        setMessage(g.error, (res && res.error) || 'Não deu para criar o convite. Tente de novo.');
+        return;
+      }
+      g.inviteCode.textContent = res.code;
+      var exp = toMs(typeof res.expiresAt === 'string' ? Date.parse(res.expiresAt) : res.expiresAt);
+      g.inviteExpiry.textContent = exp != null
+        ? 'Vale até ' + dateFmt.format(new Date(exp)) + ' e serve para até 5 pessoas.'
+        : 'Serve para até 5 pessoas.';
+      g.inviteStatus.textContent = '';
+      show(g.inviteBox, true);
+      g.btnCopy.focus();
+    });
+  });
+
+  function selectInviteCode() {
+    var sel = window.getSelection && window.getSelection();
+    if (!sel) return;
+    sel.removeAllRanges();
+    var range = document.createRange();
+    range.selectNodeContents(g.inviteCode);
+    sel.addRange(range);
+  }
+
+  g.btnCopy.addEventListener('click', function () {
+    var code = g.inviteCode.textContent;
+    var fallback = function () {
+      g.inviteCode.focus();
+      selectInviteCode();
+      g.inviteStatus.textContent = 'Não deu para copiar sozinho. O código está selecionado: aperte Ctrl+C.';
+    };
+    try {
+      if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') return fallback();
+      navigator.clipboard.writeText(code).then(function () {
+        g.inviteStatus.textContent = 'Código copiado. Agora é só mandar para o seu amigo.';
+      }, fallback);
+    } catch (e) {
+      fallback();
+    }
+  });
+
+  // Sair do grupo
+  g.btnLeave.addEventListener('click', function () {
+    var gr = groupInfo();
+    if (!gr) return;
+    var others = (gr.members || []).filter(function (m) { return !m.isMe; }).length;
+    var text;
+    if (gr.isOwner && others > 0) {
+      text = 'Você é o dono. Ao sair, a posse do grupo passa para o membro mais antigo. Você só volta com um novo convite.';
+    } else if (gr.isOwner) {
+      text = 'Você é o único membro. Ao sair, o grupo e o chat são apagados.';
+    } else {
+      text = 'Você sai do ranking e do chat. Para voltar, vai precisar de um novo convite.';
+    }
+    g.leaveText.textContent = text;
+    setMessage(g.leaveError, '');
+    g.leaveSubmit.disabled = false;
+    openDialog(g.dlgLeave);
+    g.formLeave.querySelector('[data-close]').focus();
+  });
+
+  g.formLeave.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    setMessage(g.leaveError, '');
+    g.leaveSubmit.disabled = true;
+    call(function () { return bridge.leaveGroup(); }).then(function (res) {
+      g.leaveSubmit.disabled = false;
+      var err = applyResult(res);
+      if (err) {
+        setMessage(g.leaveError, err);
+      } else {
+        g.dlgLeave.close();
+        if (!g.createName.closest('[hidden]')) g.createName.focus();
+        else focusMain();
+      }
+    });
+  });
+
+  // Remover membro
+  function openRemove(member, button) {
+    removeTarget = member;
+    removeReturnFocus = button;
+    g.removeTitle.textContent = 'Remover ' + memberName(member) + ' do grupo?';
+    setMessage(g.removeError, '');
+    g.removeSubmit.disabled = false;
+    openDialog(g.dlgRemove);
+    g.formRemove.querySelector('[data-close]').focus();
+  }
+
+  g.formRemove.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    if (!removeTarget) return;
+    var id = removeTarget.userId;
+    setMessage(g.removeError, '');
+    g.removeSubmit.disabled = true;
+    call(function () { return bridge.removeMember(id); }).then(function (res) {
+      g.removeSubmit.disabled = false;
+      var err = applyResult(res);
+      if (err) {
+        setMessage(g.removeError, err);
+      } else {
+        removeTarget = null;
+        g.dlgRemove.close();
+      }
+    });
+  });
+
+  g.dlgRemove.addEventListener('close', function () {
+    if (removeReturnFocus && document.body.contains(removeReturnFocus)) removeReturnFocus.focus();
+    else focusMain();
+    removeReturnFocus = null;
+  });
+
+  /* ---------- chat ---------- */
+
+  var c = {
+    scroll: $('chat-scroll'),
+    list: $('chat-list'),
+    empty: $('chat-empty'),
+    status: $('chat-status'),
+    live: $('chat-live'),
+    form: $('form-chat'),
+    input: $('chat-input'),
+    send: $('chat-send'),
+    counter: $('chat-counter'),
+    error: $('chat-error')
+  };
+  var chatState = { signature: '', lastId: null, forceScroll: true, sending: false };
+  var CHAT_MAX = 1000;
+  var timeFmt = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  var dayFmt = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' });
+
+  function chatTime(ms) {
+    var d = new Date(ms);
+    var now = new Date();
+    var sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+    return sameDay ? timeFmt.format(d) : dayFmt.format(d) + ' ' + timeFmt.format(d);
+  }
+
+  function atBottom() {
+    return c.scroll.scrollHeight - c.scroll.scrollTop - c.scroll.clientHeight < 32;
+  }
+
+  function scrollChatToEnd() {
+    c.scroll.scrollTop = c.scroll.scrollHeight;
+  }
+
+  function renderChat() {
+    var chat = (view && view.chat) || { messages: [], status: 'idle' };
+    var msgs = Array.isArray(chat.messages) ? chat.messages : [];
+    show(c.status, chat.status === 'error');
+    show(c.empty, msgs.length === 0);
+
+    var first = msgs.length ? msgs[0].id : '';
+    var last = msgs.length ? msgs[msgs.length - 1].id : '';
+    var sig = lastGroupId + '|' + msgs.length + '|' + first + '|' + last;
+    if (sig === chatState.signature) return;
+
+    var stick = chatState.forceScroll || atBottom();
+    var prevTop = c.scroll.scrollTop;
+    var announce = [];
+    var isFirstLoad = chatState.lastId === null;
+
+    c.list.textContent = '';
+    msgs.forEach(function (m) {
+      var mine = !!m.mine;
+      var li = el('li', 'msg' + (mine ? ' mine' : ''));
+      var meta = el('p', 'msg-meta');
+      meta.appendChild(el('span', 'msg-author', mine ? 'Você' : (m.displayName || 'Fantasma')));
+      var ms = toMs(m.createdAt);
+      if (ms != null) {
+        var t = el('time', 'msg-time', chatTime(ms));
+        t.setAttribute('datetime', new Date(ms).toISOString());
+        meta.appendChild(t);
+      }
+      li.appendChild(meta);
+      li.appendChild(el('p', 'msg-body', typeof m.body === 'string' ? m.body : ''));
+      c.list.appendChild(li);
+      if (!isFirstLoad && !mine && typeof m.id === 'number' && m.id > chatState.lastId) announce.push(m);
+    });
+
+    chatState.signature = sig;
+    chatState.lastId = msgs.reduce(function (mx, m) { return typeof m.id === 'number' && m.id > mx ? m.id : mx; }, chatState.lastId || 0);
+
+    if (stick) scrollChatToEnd();
+    else c.scroll.scrollTop = prevTop;
+    chatState.forceScroll = false;
+
+    // anuncia só mensagens novas de outras pessoas, e só com a aba Grupo aberta
+    if (announce.length && currentTab === 'group') {
+      var lm = announce[announce.length - 1];
+      var who = lm.displayName || 'Fantasma';
+      c.live.textContent = (announce.length > 1 ? announce.length + ' mensagens novas. Última de ' : 'Mensagem de ') + who + ': ' + lm.body;
+    }
+  }
+
+  // se o usuário estava no fim, continua no fim quando a área muda de tamanho
+  var chatStuck = true;
+  c.scroll.addEventListener('scroll', function () { chatStuck = atBottom(); });
+  if (typeof window.ResizeObserver === 'function') {
+    new window.ResizeObserver(function () { if (chatStuck) scrollChatToEnd(); }).observe(c.scroll);
+  }
+
+  function updateCounter() {
+    var len = c.input.value.length;
+    if (len > 900) {
+      c.counter.textContent = len + ' de ' + CHAT_MAX + ' caracteres';
+      c.counter.dataset.full = len >= CHAT_MAX ? 'true' : 'false';
+      show(c.counter, true);
+    } else {
+      show(c.counter, false);
+    }
+  }
+
+  c.input.addEventListener('input', function () {
+    updateCounter();
+    if (!c.error.hidden) setMessage(c.error, '');
+  });
+
+  c.input.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+      ev.preventDefault();
+      if (typeof c.form.requestSubmit === 'function') c.form.requestSubmit();
+      else c.form.dispatchEvent(new Event('submit', { cancelable: true }));
+    }
+  });
+
+  c.form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    if (chatState.sending) return;
+    setMessage(c.error, '');
+    var body = c.input.value.trim();
+    if (!body) {
+      c.input.focus();
+      return;
+    }
+    if (body.length > CHAT_MAX) {
+      setMessage(c.error, 'A mensagem pode ter no máximo 1000 caracteres.');
+      c.input.focus();
+      return;
+    }
+    chatState.sending = true;
+    c.send.disabled = true;
+    call(function () { return bridge.sendMessage(body); }).then(function (res) {
+      chatState.sending = false;
+      c.send.disabled = false;
+      chatState.forceScroll = true;
+      var err = applyResult(res);
+      if (err) {
+        chatState.forceScroll = false;
+        setMessage(c.error, err);
+      } else {
+        c.input.value = '';
+        updateCounter();
+        scrollChatToEnd();
+      }
+      c.input.focus();
+    });
+  });
+
   /* ---------- inicialização ---------- */
 
   function start() {
@@ -857,6 +1469,8 @@
       els.boot.textContent = 'Não foi possível conectar ao aplicativo. Feche e abra o Ghost Rank de novo.';
       return;
     }
+
+    if (voice) voice.init({ bridge: bridge, getView: function () { return view; } });
 
     if (typeof bridge.onUpdate === 'function') {
       bridge.onUpdate(function (v) {
