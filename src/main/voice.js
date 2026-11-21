@@ -7,12 +7,14 @@ const { createSupabaseRest } = require('./group');
 
 const TOKEN_RE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 const MAX_TOKEN = 8192;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LIVEKIT_SUFFIX = '.livekit.cloud';
 const HOST_LABEL_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 
 const VOICE_MESSAGES = Object.freeze({
   voice_unconfigured: 'Voz ainda não configurada no servidor.',
   not_in_group: 'Entre em um grupo para usar a sala de voz.',
+  not_member: 'Você não tem acesso a esse canal de voz.',
   bad_response: 'O servidor de voz enviou uma resposta inesperada. Tente novamente.',
 });
 
@@ -44,12 +46,17 @@ function createVoiceClient({ fetchImpl, supabaseUrl, anonKey, getAccessToken, li
   });
   const { identity, call, errorFor } = rest;
 
-  async function getToken() {
+  /** `target`: {} (sala antiga do grupo), { channelId } (canal de voz) ou { dmId } (chamada na DM). */
+  async function getToken(target = {}) {
+    const body = {};
+    if (target && typeof target.channelId === 'string' && UUID_RE.test(target.channelId)) body.channelId = target.channelId.toLowerCase();
+    else if (target && typeof target.dmId === 'string' && UUID_RE.test(target.dmId)) body.dmId = target.dmId.toLowerCase();
     const { token } = await identity();
-    const { status, data } = await call('/functions/v1/livekit-token', { method: 'POST', token, body: {} });
+    const { status, data } = await call('/functions/v1/livekit-token', { method: 'POST', token, body });
     const code = data && typeof data === 'object' && typeof data.error === 'string' ? data.error : '';
     if (status === 503 && code === 'voice_unconfigured') throw errorFor('voice_unconfigured');
     if (status === 403 && code === 'not_in_group') throw errorFor('not_in_group');
+    if (status === 403 && code === 'not_member') throw errorFor('not_member');
     if (status === 401) throw errorFor('unauthenticated');
     if (status !== 200 || !data || typeof data !== 'object') throw errorFor('bad_response');
     if (!isValidLiveKitUrl(data.url, livekitHosts) || !isValidJwtShape(data.token)) throw errorFor('bad_response');

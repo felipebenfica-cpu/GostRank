@@ -23,7 +23,9 @@ function requireText(value, field, max) {
  * Cria o JWT do LiveKit.
  * @returns {Promise<string>}
  */
-export async function createLiveKitToken({ apiKey, apiSecret, identity, name, room, ttlSeconds = 3600, now = Date.now() } = {}) {
+export async function createLiveKitToken({
+  apiKey, apiSecret, identity, name, room, ttlSeconds = 3600, now = Date.now(), canPublishData = true,
+} = {}) {
   requireText(apiKey, 'apiKey', 256);
   requireText(apiSecret, 'apiSecret', 1024);
   requireText(identity, 'identity', 128);
@@ -46,7 +48,7 @@ export async function createLiveKitToken({ apiKey, apiSecret, identity, name, ro
       roomJoin: true,
       canPublish: true,
       canSubscribe: true,
-      canPublishData: false,
+      canPublishData: canPublishData === true,
     },
   };
   if (name) payload.name = name;
@@ -63,7 +65,17 @@ export async function createLiveKitToken({ apiKey, apiSecret, identity, name, ro
   return `${signingInput}.${base64UrlFromBytes(sig)}`;
 }
 
-/** Nome da sala de voz de um grupo. */
+/** Nome da sala de voz de um grupo (app antigo, sem canais de voz). */
 export function roomForGroup(groupId) {
   return 'grupo-' + groupId;
+}
+
+/** Nome da sala de um canal de voz. */
+export function roomForChannel(channelId) {
+  return 'vc_' + channelId;
+}
+
+/** Nome da sala de chamada de uma DM. */
+export function roomForDm(dmId) {
+  return 'dm_' + dmId;
 }

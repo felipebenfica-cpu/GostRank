@@ -44,7 +44,9 @@ function json(status, obj) {
 }
 
 // Supabase falso: auth + PostgREST com uma tabela steam_link_states em memoria.
-function fakeSupabase({ inGroup = true, patchStatus = 204, steamValid = true } = {}) {
+function fakeSupabase({
+  inGroup = true, patchStatus = 204, steamValid = true, legacyVoice = null, channels = {}, dms = {}, blocked = false,
+} = {}) {
   const calls = [];
   const states = new Map();
   const profiles = {};
@@ -65,7 +67,24 @@ function fakeSupabase({ inGroup = true, patchStatus = 204, steamValid = true } =
     const q = u.searchParams;
     if (u.pathname === '/rest/v1/group_members') {
       assert.strictEqual(q.get('user_id'), `eq.${USER}`);
+      if (q.get('group_id')) return json(200, inGroup && q.get('group_id') === `eq.${GROUP}` ? [{ group_id: GROUP }] : []);
       return json(200, inGroup ? [{ group_id: GROUP }] : []);
+    }
+    if (u.pathname === '/rest/v1/channels') {
+      if (q.get('kind') === 'eq.voice') {
+        assert.strictEqual(q.get('group_id'), `eq.${GROUP}`);
+        return json(200, legacyVoice ? [{ id: legacyVoice }] : []);
+      }
+      const id = q.get('id').slice(3);
+      return json(200, channels[id] ? [{ id, ...channels[id] }] : []);
+    }
+    if (u.pathname === '/rest/v1/dm_channels') {
+      const id = q.get('id').slice(3);
+      return json(200, dms[id] ? [{ id, ...dms[id] }] : []);
+    }
+    if (u.pathname === '/rest/v1/relationships') {
+      assert.strictEqual(q.get('kind'), 'eq.blocked');
+      return json(200, blocked ? [{ user_id: USER }] : []);
     }
     if (u.pathname === '/rest/v1/profiles' && init.method === 'GET') return json(200, [{ display_name: 'Ana' }]);
     if (u.pathname === '/rest/v1/profiles' && init.method === 'PATCH') {
@@ -101,7 +120,16 @@ function fakeSupabase({ inGroup = true, patchStatus = 204, steamValid = true } =
   return { fetchImpl, calls, states, profiles };
 }
 
-const post = (url, token) => new Request(url, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {} });
+const post = (url, token, body) => new Request(url, {
+  method: 'POST',
+  headers: token ? { Authorization: `Bearer ${token}` } : {},
+  body: body === undefined ? undefined : (typeof body === 'string' ? body : JSON.stringify(body)),
+});
+const VC = '33333333-3333-4333-8333-333333333333';
+const TC = '44444444-4444-4444-8444-444444444444';
+const DMID = '55555555-5555-4555-8555-555555555555';
+const OTHER = '66666666-6666-4666-8666-666666666666';
+const roomOf = (token) => JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).video;
 
 for (const variant of ['index.ts', 'bundle.ts']) {
   test(`livekit-token (${variant})`, async (t) => {
@@ -165,6 +193,81 @@ for (const variant of ['index.ts', 'bundle.ts']) {
       assert.strictEqual(p.exp, NOW / 1000 + 3600);
     });
 
+    await t.test('CORS: preflight e respostas liberam a versao web', async () => {
+      const { h } = mk();
+      const pre = await h(new Request(url, { method: 'OPTIONS' }));
+      assert.strictEqual(pre.headers.get('access-control-allow-origin'), '*');
+      assert.match(pre.headers.get('access-control-allow-headers'), /authorization/);
+      assert.match(pre.headers.get('access-control-allow-headers'), /apikey/);
+      assert.match(pre.headers.get('access-control-allow-methods'), /POST/);
+      const r = await h(post(url, GOOD));
+      assert.strictEqual(r.headers.get('access-control-allow-origin'), '*');
+      const e = await h(post(url));
+      assert.strictEqual(e.headers.get('access-control-allow-origin'), '*');
+    });
+
+    await t.test('canPublishData liberado', async () => {
+      const { h } = mk();
+      const r = await h(post(url, GOOD));
+      assert.strictEqual(roomOf((await r.json()).token).canPublishData, true);
+    });
+
+    await t.test('corpo vazio (app antigo): primeiro canal de voz do primeiro servidor', async () => {
+      const { h, sb } = mk({ legacyVoice: VC });
+      const r = await h(post(url, GOOD, {}));
+      assert.strictEqual(r.status, 200);
+      assert.strictEqual(roomOf((await r.json()).token).room, `vc_${VC}`);
+      const gm = sb.calls.find((c) => c.url.includes('/rest/v1/group_members'));
+      assert.match(gm.url, /order=joined_at\.asc/);
+    });
+
+    await t.test('channelId: membro do servidor de um canal de voz entra na sala vc_<id>', async () => {
+      const { h } = mk({ channels: { [VC]: { group_id: GROUP, kind: 'voice' } } });
+      const r = await h(post(url, GOOD, { channelId: VC }));
+      assert.strictEqual(r.status, 200);
+      assert.strictEqual(roomOf((await r.json()).token).room, `vc_${VC}`);
+    });
+
+    await t.test('channelId: canal de texto, inexistente ou sem ser membro -> 403 not_member', async () => {
+      for (const [opts, id] of [
+        [{ channels: { [TC]: { group_id: GROUP, kind: 'text' } } }, TC],
+        [{}, VC],
+        [{ inGroup: false, channels: { [VC]: { group_id: GROUP, kind: 'voice' } } }, VC],
+        [{ channels: { [VC]: { group_id: OTHER, kind: 'voice' } } }, VC],
+      ]) {
+        const { h } = mk(opts);
+        const r = await h(post(url, GOOD, { channelId: id }));
+        assert.strictEqual(r.status, 403);
+        assert.deepStrictEqual(await r.json(), { error: 'not_member' });
+      }
+    });
+
+    await t.test('dmId: participante sem bloqueio entra na sala dm_<id>', async () => {
+      const dms = { [DMID]: { user_a: USER, user_b: OTHER } };
+      let { h } = mk({ dms });
+      let r = await h(post(url, GOOD, { dmId: DMID }));
+      assert.strictEqual(r.status, 200);
+      assert.strictEqual(roomOf((await r.json()).token).room, `dm_${DMID}`);
+      ({ h } = mk({ dms, blocked: true }));
+      r = await h(post(url, GOOD, { dmId: DMID }));
+      assert.strictEqual(r.status, 403);
+      ({ h } = mk({ dms: { [DMID]: { user_a: OTHER, user_b: GROUP } } }));
+      r = await h(post(url, GOOD, { dmId: DMID }));
+      assert.strictEqual(r.status, 403);
+      assert.deepStrictEqual(await r.json(), { error: 'not_member' });
+    });
+
+    await t.test('corpo invalido -> 400 bad_request (sem consultar o banco)', async () => {
+      for (const body of ['{', '[]', '"x"', { channelId: 'abc' }, { dmId: 1 }, { channelId: VC, dmId: DMID },
+        { channelId: VC, extra: 1 }, 'x'.repeat(2000)]) {
+        const { h, sb } = mk();
+        const r = await h(post(url, GOOD, body));
+        assert.strictEqual(r.status, 400, JSON.stringify(body).slice(0, 40));
+        assert.deepStrictEqual(await r.json(), { error: 'bad_request' });
+        assert.ok(!sb.calls.some((c) => c.url.includes('/rest/v1/')));
+      }
+    });
+
     await t.test('falha do Supabase -> 502 generico', async () => {
       const h = mod.createHandler({ getEnv: env(), fetchImpl: async () => { throw new Error('rede'); }, now: () => NOW });
       const r = await h(post(url, GOOD));
@@ -222,6 +325,16 @@ for (const variant of ['index.ts', 'bundle.ts']) {
       assert.strictEqual((await h(post(`${base}/start`))).status, 401);
       assert.strictEqual((await h(post(`${base}/start`, 'token-falso-0123456789abcdef'))).status, 401);
       assert.strictEqual((await h(new Request(`${base}/outra`))).status, 404);
+    });
+
+    await t.test('start: CORS para a versao web', async () => {
+      const { h } = mk();
+      const pre = await h(new Request(`${base}/start`, { method: 'OPTIONS' }));
+      assert.strictEqual(pre.status, 204);
+      assert.strictEqual(pre.headers.get('access-control-allow-origin'), '*');
+      const r = await h(post(`${base}/start`, GOOD));
+      assert.strictEqual(r.status, 200);
+      assert.strictEqual(r.headers.get('access-control-allow-origin'), '*');
     });
 
     await t.test('start: cria state de 10 min e devolve a URL da Steam', async () => {

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'">
+  <title>Ghost Rank — harness do chat</title>
+  <link rel="stylesheet" href="../src/renderer/styles.css">
+  <link rel="stylesheet" href="../src/renderer/chat.css">
+  <link rel="stylesheet" href="harness-chat.css">
+</head>
+<body>
+  <div class="hc-app">
+    <header class="hc-head">
+      <span class="hc-title"># geral</span>
+      <span class="hc-topic">Papo geral do servidor e combinados das partidas</span>
+      <span class="hc-spacer"></span>
+      <button id="hc-pin" class="hc-btn" type="button">Fixadas</button>
+      <button id="hc-search" class="hc-btn" type="button">Buscar</button>
+    </header>
+    <section id="hc-chat" class="hc-chat" aria-label="Chat"></section>
+  </div>
+  <script src="../src/renderer/emoji-data.js"></script>
+  <script src="../src/renderer/chat.js"></script>
+  <script src="harness-chat.js"></script>
+</body>
+</html>

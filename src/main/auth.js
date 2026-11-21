@@ -1,6 +1,6 @@
 'use strict';
 
-const { normalizeSupabaseUrl, isValidAnonKey } = require('./config');
+const { normalizeSupabaseUrl, isValidAnonKey } = require('./supabase-url');
 
 const MESSAGES = Object.freeze({
   invalid_credentials: 'E-mail ou senha incorretos.',
@@ -26,13 +26,23 @@ class AuthError extends Error {
   }
 }
 
+/** base64url → texto UTF-8 (Node com Buffer; navegador com atob, para a versão web). */
+function base64UrlToText(s) {
+  if (typeof Buffer !== 'undefined') return Buffer.from(s, 'base64url').toString('utf8');
+  const b64 = s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4);
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
 /** Decodifica o campo `sub` do JWT (sem verificar assinatura: o servidor valida; aqui só lemos o id). */
 function userIdFromToken(token) {
   if (typeof token !== 'string' || token.length > 4096) return null;
   const parts = token.split('.');
   if (parts.length !== 3) return null;
   try {
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    const payload = JSON.parse(base64UrlToText(parts[1]));
     const sub = payload && payload.sub;
     return typeof sub === 'string' && UUID_RE.test(sub) ? sub.toLowerCase() : null;
   } catch {

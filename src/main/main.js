@@ -1,7 +1,7 @@
 'use strict';
 
 const path = require('node:path');
-const { app, BrowserWindow, safeStorage, shell, desktopCapturer } = require('electron');
+const { app, BrowserWindow, safeStorage, shell, desktopCapturer, Notification, powerMonitor } = require('electron');
 
 const protocol = require('./protocol');
 const security = require('./security');
@@ -10,14 +10,9 @@ const { createOpenDotaClient } = require('./opendota');
 const { createStore } = require('./store');
 const { createController } = require('./controller');
 const { loadConfig } = require('./config');
-const { createAuthClient } = require('./auth');
-const { createSessionManager } = require('./session');
-const { createProfileClient } = require('./profile');
-const { createAccountService } = require('./account');
-const { createGroupClient, createGroupService, safeErrorCode } = require('./group');
-const { createChatClient, createChatFeed } = require('./chat');
-const { createVoiceClient } = require('./voice');
-const { createSteamClient } = require('./steam');
+const { normalizeSupabaseUrl } = require('./supabase-url');
+const { safeErrorCode } = require('./group');
+const { createAppServices } = require('./services');
 
 app.enableSandbox();
 protocol.registerScheme();
@@ -30,6 +25,7 @@ let unregisterIpc = null;
 let chatFeed = null;
 let group = null;
 let account = null;
+let services = null;
 let picker = null;
 let groupTimer = null;
 let steamLinkPending = false;
@@ -51,7 +47,6 @@ if (!app.requestSingleInstanceLock()) {
   security.applyGlobalSecurity();
 
   app.whenReady().then(() => {
-    protocol.registerHandler(RENDERER_DIR);
 
     const encryptor = {
       isAvailable: () => safeStorage.isEncryptionAvailable(),
@@ -69,70 +64,42 @@ if (!app.requestSingleInstanceLock()) {
       }
     };
 
-    // Contas: qualquer falha aqui deixa só as contas indisponíveis; o rastreador segue normal.
-    account = createAccountService({});
-    let session = null;
-    let voice = null;
-    let steam = null;
-    group = createGroupService({});
+    // Contas, servidores, amigos, mensagens e presença: tudo em services.js (sem Electron).
+    // Qualquer falha deixa só as contas indisponíveis; o rastreador segue normal.
+    let config = null;
+    try { config = loadConfig({}); } catch { config = null; }
+    const sessionFile = createStore({ filePath: path.join(app.getPath('userData'), 'ghost-rank-session.dat'), encryptor });
+    // Tokens nunca vão para o disco sem cifra: sem safeStorage a sessão fica só em memória.
+    const sessionStore = {
+      load: () => sessionFile.load(),
+      save: (o) => {
+        if (!encryptor.isAvailable()) throw new Error('sem cifra');
+        sessionFile.save(o);
+      },
+      clear: () => sessionFile.clear(),
+    };
+    const prefsStore = createStore({ filePath: path.join(app.getPath('userData'), 'ghost-rank-prefs.dat'), encryptor });
+    services = createAppServices({
+      config,
+      fetchImpl: (...a) => fetch(...a),
+      WebSocketImpl: typeof WebSocket === 'function' ? WebSocket : null,
+      sessionStore,
+      prefsStore,
+      notify: showNotification,
+      openExternal: (url) => shell.openExternal(url),
+      getIdleSeconds: () => powerMonitor.getSystemIdleTime(),
+      isFocused: () => Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()),
+      getSummary: () => (controller ? controller.getSummary() : null),
+      onChange: () => { pushUpdate(); updateBadge(); },
+    });
+    account = services.account;
+    group = services.group;
+    chatFeed = services.chatFeed;
+    const session = services.session;
+    const voice = services.voice;
+    const steam = services.steam;
     picker = security.createScreenPicker({ desktopCapturer });
-    try {
-      const config = loadConfig({});
-      if (config) {
-        const sessionFile = createStore({
-          filePath: path.join(app.getPath('userData'), 'ghost-rank-session.dat'),
-          encryptor,
-        });
-        // Tokens nunca vão para o disco sem cifra: sem safeStorage a sessão fica só em memória.
-        const sessionStore = {
-          load: () => sessionFile.load(),
-          save: (o) => {
-            if (!encryptor.isAvailable()) throw new Error('sem cifra');
-            sessionFile.save(o);
-          },
-          clear: () => sessionFile.clear(),
-        };
-        const auth = createAuthClient({ supabaseUrl: config.supabaseUrl, anonKey: config.anonKey });
-        session = createSessionManager({ store: sessionStore, auth });
-        const getAccessToken = async () => {
-          const s = await session.get();
-          return s ? s.accessToken : null;
-        };
-        const common = { supabaseUrl: config.supabaseUrl, anonKey: config.anonKey, getAccessToken };
-        const profile = createProfileClient(common);
-        chatFeed = createChatFeed({ client: createChatClient(common), onChange: pushUpdate });
-        group = createGroupService({
-          client: createGroupClient(common),
-          isSignedIn: () => Boolean(session.peek()),
-          chatFeed,
-          getSummary: () => (controller ? controller.getSummary() : null),
-          onChange: pushUpdate,
-        });
-        voice = createVoiceClient(common);
-        steam = createSteamClient({ ...common, openExternal: (url) => shell.openExternal(url) });
-        account = createAccountService({
-          config,
-          auth,
-          session,
-          profile,
-          onChange: pushUpdate,
-          onSessionChange: (signedIn) => {
-            if (signedIn) return refreshGroup(true);
-            steamLinkPending = false;
-            group.clear();
-            return null;
-          },
-        });
-      }
-    } catch {
-      account = createAccountService({});
-      group = createGroupService({});
-      if (chatFeed) chatFeed.stop();
-      chatFeed = null;
-      session = null;
-      voice = null;
-      steam = null;
-    }
+    protocol.registerHandler(RENDERER_DIR, { imageOrigin: config ? normalizeSupabaseUrl(config.supabaseUrl) : null });
 
     const livekitVendor = protocol.vendorExists();
     controller = createController({
@@ -141,8 +108,9 @@ if (!app.requestSingleInstanceLock()) {
       getAuthView: () => account.getAuthView(),
       getGroupView: () => group.getView(),
       getChatView: () => (chatFeed ? chatFeed.getView() : null),
-      getVoiceView: () => ({ available: Boolean(livekitVendor && account.isSignedIn() && group.hasGroup()) }),
+      getVoiceView: () => ({ available: Boolean(livekitVendor && services.voiceAvailable()) }),
       publishSnapshot: (summary) => group.publishSnapshot(summary),
+      getExtraView: () => services.getExtraView(),
       onUpdate: (view) => {
         if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
           mainWindow.webContents.send('gr:update', view);
@@ -157,11 +125,13 @@ if (!app.requestSingleInstanceLock()) {
     } : null;
     unregisterIpc = registerIpc(controller, {
       account, session, group, chatFeed, voice, picker, steam: steamService,
+      app: services.available ? services.app : null, getMode: () => services.getMode(),
     });
 
     createWindow();
     controller.start();
     account.refreshProfile().catch(() => {});
+    services.start();
     refreshGroup(true);
     groupTimer = setInterval(() => {
       if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()) refreshGroup(true);
@@ -180,10 +150,40 @@ if (!app.requestSingleInstanceLock()) {
   app.on('before-quit', () => {
     if (groupTimer) clearInterval(groupTimer);
     groupTimer = null;
-    if (chatFeed) chatFeed.stop();
+    if (services) services.stop();
     if (controller) controller.stop();
     if (unregisterIpc) unregisterIpc();
   });
+}
+
+/** Notificação de área de trabalho (menção/DM com a janela sem foco). Clique abre o alvo. */
+function showNotification({ title, body, target, silent }) {
+  if (!Notification.isSupported()) return;
+  const n = new Notification({ title: String(title).slice(0, 120), body: String(body).slice(0, 200), silent: Boolean(silent) });
+  n.on('click', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+    if (services) {
+      services.openTarget(target).finally(() => {
+        if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+          mainWindow.webContents.send('gr:notificationClick', target);
+        }
+      });
+    }
+  });
+  n.show();
+}
+
+let lastBadge = -1;
+function updateBadge() {
+  if (!services) return;
+  const n = services.badgeCount();
+  if (n === lastBadge) return;
+  lastBadge = n;
+  try { app.setBadgeCount(n); } catch { /* nem todo sistema tem badge */ }
 }
 
 /** Recarrega o grupo em segundo plano (falhas só deixam o grupo como estava). */

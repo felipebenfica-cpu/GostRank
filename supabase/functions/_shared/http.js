@@ -10,6 +10,20 @@ const BASE_HEADERS = {
   'Referrer-Policy': 'no-referrer',
 };
 
+// CORS: a versao web (navegador) chama as funcoes de outra origem. A autorizacao continua sendo o
+// token do usuario no cabecalho Authorization (sem cookies), entao liberar qualquer origem e seguro.
+export const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400',
+};
+
+/** Resposta ao preflight (OPTIONS) do navegador. */
+export function preflightResponse(extra = {}) {
+  return new Response(null, { status: 204, headers: { ...CORS_HEADERS, ...extra } });
+}
+
 /** Token do cabecalho Authorization (ou null). */
 export function bearerToken(req) {
   const h = req.headers.get('authorization') || '';
@@ -20,7 +34,7 @@ export function bearerToken(req) {
 export function jsonResponse(status, obj, extra = {}) {
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { ...BASE_HEADERS, 'Content-Type': 'application/json; charset=utf-8', ...extra },
+    headers: { ...BASE_HEADERS, ...CORS_HEADERS, 'Content-Type': 'application/json; charset=utf-8', ...extra },
   });
 }
 

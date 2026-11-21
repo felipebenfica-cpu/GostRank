@@ -39,7 +39,7 @@ test('JWT HS256 verificavel com header, payload, grants, nbf e exp', async () =>
       roomJoin: true,
       canPublish: true,
       canSubscribe: true,
-      canPublishData: false,
+      canPublishData: true,
     },
   });
 });
@@ -70,6 +70,18 @@ test('entradas invalidas sao recusadas', async () => {
   ]) {
     await assert.rejects(createLiveKitToken({ ...base, ...bad }), TypeError, JSON.stringify(bad));
   }
+});
+
+test('canPublishData pode ser desligado', async () => {
+  const { createLiveKitToken } = await load();
+  const jwt = await createLiveKitToken({ ...base, canPublishData: false });
+  assert.strictEqual(b64urlDecode(jwt.split('.')[1]).video.canPublishData, false);
+});
+
+test('salas de canal de voz (vc_) e de DM (dm_)', async () => {
+  const { roomForChannel, roomForDm } = await load();
+  assert.strictEqual(roomForChannel('abc'), 'vc_abc');
+  assert.strictEqual(roomForDm('abc'), 'dm_abc');
 });
 
 test('roomForGroup usa o prefixo grupo-', async () => {

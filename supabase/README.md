@@ -123,3 +123,47 @@ Enquanto esses segredos nao existirem, a voz responde "voz nao configurada" e o 
 ### Pagina de retorno da Steam
 
 Depois de entrar na Steam, o navegador mostra uma mensagem curta (por exemplo, "Steam vinculada. Pode voltar ao Ghost Rank."). O Supabase so permite paginas HTML em projetos com **dominio proprio**; sem isso, a funcao responde em texto simples, o que funciona do mesmo jeito. Se um dia o projeto tiver dominio proprio, da para cadastrar o segredo opcional `STEAM_LINK_HTML` = `true` para a resposta sair em HTML.
+
+# Etapa 6: modelo completo do Discord (0003)
+
+Amigos, varios servidores, canais, cargos, DMs, reacoes, anexos, convites ilimitados e tempo real.
+O app antigo (.exe da Etapa 5) continua funcionando depois desta atualizacao.
+
+## 7. Aplicar o arquivo 0003
+
+1. No painel do Supabase, abra **SQL Editor** > **New query**.
+2. Abra o arquivo `supabase/migrations/0003_discord.sql`, copie **tudo** e cole.
+3. Clique em **Run**. Tem que aparecer "Success. No rows returned".
+4. Pode rodar de novo sem problema (o arquivo e idempotente).
+
+Isso ja liga o Realtime (tempo real) e cria os buckets `avatars` e `attachments` no Storage.
+Nao precisa mexer em mais nada no painel para isso.
+
+Conferir: em **Table Editor** devem aparecer `channels`, `relationships`, `dm_channels` e
+`message_reactions`; em **Storage**, os buckets `avatars` (publico) e `attachments` (privado).
+O seu grupo antigo vira um servidor com o canal `#geral` e a sala de voz `Geral`.
+
+## 8. Republicar as duas funcoes
+
+As funcoes mudaram (salas por canal de voz, chamada em DM e liberacao para a versao web).
+Para cada uma, `livekit-token` e `steam-link`:
+
+1. **Edge Functions** > abra a funcao > **Code**.
+2. Apague tudo e cole o conteudo do `bundle.ts` dela
+   (`supabase/functions/livekit-token/bundle.ts` e `supabase/functions/steam-link/bundle.ts`).
+3. Clique em **Deploy**.
+4. Em **Details**, confira que **Verify JWT** continua **desligado**.
+
+Os segredos do LiveKit ja cadastrados continuam valendo; nao precisa cadastrar de novo.
+
+### O que o 0003 faz
+
+- Nome de usuario unico (`@usuario`) para todo mundo, gerado a partir do apelido; pode ser trocado.
+- Amigos: pedidos, aceitar, recusar, remover e bloquear; busca de pessoas pelo nome de usuario.
+- Varios servidores por pessoa (ate 50), ate 100 pessoas por servidor; cargos dono, admin e membro;
+  expulsar, banir, apelido no servidor, transferir posse.
+- Categorias e canais de texto e de voz.
+- Convite permanente por padrao: **nunca expira e nao tem limite de usos**. Da para criar convites
+  com validade (30 min a 7 dias) e limite (1 a 100 usos), e revogar.
+- Mensagens: DMs, respostas, edicao, reacoes, anexos (ate 8 MB), mencoes, fixadas, nao lidas e busca.
+- Tempo real com canais privados: so membros do servidor, participantes da DM e amigos recebem os eventos.

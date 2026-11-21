@@ -19,18 +19,30 @@ const MIME_TYPES = Object.freeze({
   '.woff2': 'font/woff2',
 });
 
-const CSP = [
-  "default-src 'none'",
-  "script-src 'self'",
-  "style-src 'self'",
-  "img-src 'self' data:",
-  "font-src 'self'",
-  'connect-src wss://*.livekit.cloud https://*.livekit.cloud',
-  "media-src 'self' blob: mediastream:",
-  "base-uri 'none'",
-  "form-action 'none'",
-  "frame-ancestors 'none'",
-].join('; ');
+const IMAGE_ORIGIN_RE = /^https:\/\/[a-z0-9][a-z0-9-]*\.supabase\.co$/;
+
+/**
+ * CSP do app. `imageOrigin` (opcional) libera imagens só da origem do Supabase configurado
+ * (avatares, ícones e anexos da Etapa 6) e blob: (prévia local de anexos).
+ */
+function buildCsp({ imageOrigin = null } = {}) {
+  const img = typeof imageOrigin === 'string' && IMAGE_ORIGIN_RE.test(imageOrigin)
+    ? `img-src 'self' data: blob: ${imageOrigin}` : "img-src 'self' data:";
+  return [
+    "default-src 'none'",
+    "script-src 'self'",
+    "style-src 'self'",
+    img,
+    "font-src 'self'",
+    'connect-src wss://*.livekit.cloud https://*.livekit.cloud',
+    "media-src 'self' blob: mediastream:",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-ancestors 'none'",
+  ].join('; ');
+}
+
+const CSP = buildCsp();
 
 // Única rota para node_modules: o build UMD do livekit-client (servido localmente, nunca CDN).
 const VENDOR_PREFIX = '/vendor/';
@@ -122,7 +134,7 @@ function textResponse(body, status) {
 }
 
 /** Atende uma requisição app://. Exportado para teste. */
-async function handleRequest(urlString, rootDir, { vendorFiles = DEFAULT_VENDOR_FILES, readFile = fs.promises.readFile } = {}) {
+async function handleRequest(urlString, rootDir, { vendorFiles = DEFAULT_VENDOR_FILES, readFile = fs.promises.readFile, csp = CSP } = {}) {
   const vendor = resolveVendorPath(urlString, vendorFiles);
   const resolved = vendor || resolveRequestPath(urlString, rootDir);
   if (!resolved.ok) {
@@ -130,17 +142,18 @@ async function handleRequest(urlString, rootDir, { vendorFiles = DEFAULT_VENDOR_
   }
   try {
     const data = await readFile(resolved.filePath);
-    return new Response(data, { status: 200, headers: buildHeaders(resolved.ext) });
+    return new Response(data, { status: 200, headers: buildHeaders(resolved.ext, csp) });
   } catch {
     return textResponse('Não encontrado', 404);
   }
 }
 
-function buildHeaders(ext) {
+function buildHeaders(ext, csp = CSP) {
   return {
     'Content-Type': MIME_TYPES[ext] || 'application/octet-stream',
     'Cache-Control': 'no-store',
     ...SECURITY_HEADERS,
+    'Content-Security-Policy': csp,
   };
 }
 
@@ -156,9 +169,10 @@ function registerScheme() {
 }
 
 /** Registra o handler do protocolo. Chamar depois de app.whenReady(). */
-function registerHandler(rootDir) {
+function registerHandler(rootDir, { imageOrigin = null } = {}) {
   const { protocol } = require('electron');
-  protocol.handle(SCHEME, (request) => handleRequest(request.url, rootDir));
+  const csp = buildCsp({ imageOrigin });
+  protocol.handle(SCHEME, (request) => handleRequest(request.url, rootDir, { csp }));
 }
 
 module.exports = {
@@ -166,6 +180,7 @@ module.exports = {
   HOST,
   ORIGIN,
   CSP,
+  buildCsp,
   SECURITY_HEADERS,
   MIME_TYPES,
   VENDOR_PREFIX,

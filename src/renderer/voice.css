@@ -610,3 +610,260 @@
   .vc-tile:focus-visible,
   .vc-seg-input:focus-visible + .vc-seg-face { outline: 3px solid Highlight; outline-offset: 2px; }
 }
+
+/* ==========================================================================
+   Etapa 6: câmera, apertar-para-falar, prévia do canal, configurações de voz
+   ========================================================================== */
+
+/* ---- Avatares: cores 6 e 7 e foto ------------------------------------- */
+.vc-hue-6 { background: #2b2140; border-color: #d6a8ff; color: #d6a8ff; }
+.vc-hue-7 { background: #3a2a1d; border-color: #ffb27a; color: #ffb27a; }
+.vc-avatar { position: relative; overflow: hidden; }
+.vc-avatar-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.vc-badge-on { color: var(--win); }
+
+/* ---- Câmera dentro do cartão ------------------------------------------ */
+.vc-tile-person.has-video { background: #000; }
+.vc-tile-person.has-video .vc-tile-body { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; }
+.vc-camera { object-fit: cover; }
+.vc-tile.is-expanded .vc-camera,
+.vc-tile:fullscreen .vc-camera { object-fit: contain; }
+.is-mirrored { transform: scaleX(-1); }
+.vc-tile-person.has-video.is-speaking::after { border-color: var(--win); }
+
+/* ---- Apertar-para-falar ----------------------------------------------- */
+.vc-ctl.is-ptt { color: var(--warn); }
+.vc-ctl.is-ptt-open { color: var(--win); background: var(--win-bg); }
+.vc-user-controls.is-ptt-open { box-shadow: inset 0 0 0 1px var(--win); border-radius: var(--radius-sm); }
+.vc-conn-ptt {
+  margin: var(--space-2) 0 0;
+  padding: 0.125rem var(--space-2);
+  border-radius: 6px;
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-align: center;
+}
+.vc-conn-ptt.is-open { background: var(--win-bg); color: var(--win); }
+.vc-tile-person.is-ptt-open .vc-tile-label { box-shadow: 0 0 0 1px var(--win); }
+
+/* ---- Prévia do canal antes de entrar ---------------------------------- */
+.vc-idle-people {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+  max-width: 40rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vc-idle-person {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  width: 6.5rem;
+  min-width: 0;
+}
+.vc-idle-person .vc-avatar { width: 3.5rem; height: 3.5rem; font-size: 1.125rem; }
+.vc-idle-person-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); font-weight: 600; }
+.vc-idle-person .vc-ch-icons { display: inline-flex; gap: 0.125rem; min-height: 1.75rem; }
+
+/* ---- Seletor de tela no navegador ------------------------------------- */
+.vc-dialog.is-browser-picker .vc-tabs,
+.vc-dialog.is-browser-picker .vc-source-grid { display: none; }
+
+/* ---- Configurações: Voz e vídeo --------------------------------------- */
+.vs-root { display: flex; flex-direction: column; gap: var(--space-5); max-width: 46rem; color: var(--text); }
+.vs-h2 { margin: 0; font-size: var(--fs-lg); font-weight: 700; }
+.vs-section { display: flex; flex-direction: column; gap: var(--space-3); padding-bottom: var(--space-5); border-bottom: 1px solid var(--border); }
+.vs-section:last-child { border-bottom: 0; }
+.vs-h3 { margin: 0; font-size: var(--fs-xs); font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.vs-grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: var(--space-4); }
+.vs-field { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.vs-label { margin: 0; font-size: var(--fs-sm); font-weight: 700; color: var(--text); }
+.vs-desc { margin: 0; font-size: var(--fs-xs); color: var(--text-muted); line-height: 1.45; }
+.vs-warn { color: var(--warn); }
+.vs-note { margin: 0; font-size: var(--fs-xs); color: var(--text-faint); }
+.vs-select {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+.vs-select:disabled { opacity: 0.6; }
+.vs-range-top { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.vs-out { font-size: var(--fs-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.vs-range { width: 100%; }
+
+.vs-test {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.vs-test-text { display: flex; flex-direction: column; gap: var(--space-1); }
+.vs-test-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.vs-test-btn { flex: none; }
+.vs-test-btn.is-active { background: var(--danger-solid); border-color: transparent; color: var(--on-danger); }
+.vs-test-row .vs-meter { flex: 1 1 12rem; }
+
+/* Medidor de nível: --vs-level e --vs-threshold vão de 0 a 1 (definidos pelo script via CSSOM) */
+.vs-meter {
+  --vs-level: 0;
+  --vs-threshold: 0.5;
+  position: relative;
+  height: 0.75rem;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.vs-meter-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  transform: scaleX(var(--vs-level));
+  background: var(--text-faint);
+  transition: transform 60ms linear;
+}
+.vs-meter.is-open .vs-meter-fill { background: var(--win); }
+.vs-meter.has-threshold {
+  height: 1.25rem;
+  background: linear-gradient(to right, var(--warn-bg) 0, var(--warn-bg) calc(var(--vs-threshold) * 100%), var(--win-bg) calc(var(--vs-threshold) * 100%), var(--win-bg) 100%);
+}
+.vs-meter.has-threshold .vs-meter-fill { background: var(--warn); }
+.vs-meter.has-threshold.is-open .vs-meter-fill { background: var(--win); }
+.vs-meter-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--vs-threshold) * 100%);
+  width: 3px;
+  margin-left: -1px;
+  background: var(--text);
+  border-radius: 2px;
+}
+.vs-meter.is-auto .vs-meter-mark { background: var(--text-muted); }
+.vs-sens { display: flex; flex-direction: column; gap: var(--space-2); }
+.vs-sens-range { width: 100%; margin: 0; }
+.vs-sens-range:disabled { opacity: 0.45; }
+.vs-sens-out { font-variant-numeric: tabular-nums; }
+
+.vs-radios { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; border: 0; }
+.vs-radio { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-sm); background: var(--surface-2); cursor: pointer; }
+.vs-radio:hover { background: var(--surface-3); }
+.vs-radio-input { flex: none; width: 1.25rem; height: 1.25rem; margin: 0; accent-color: var(--ghost); }
+.vs-radio-face { display: flex; flex-direction: column; gap: 0.125rem; }
+.vs-radio-main { font-size: var(--fs-sm); font-weight: 700; }
+.vs-radio-desc { font-size: var(--fs-xs); color: var(--text-muted); }
+.vs-radio:has(.vs-radio-input:checked) { box-shadow: inset 0 0 0 1px var(--ghost); }
+.vs-radio-input:focus-visible { outline: none; box-shadow: var(--focus); border-radius: 50%; }
+
+.vs-ptt { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-radius: var(--radius-sm); background: var(--surface-2); }
+.vs-ptt-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.vs-key {
+  display: inline-grid;
+  place-items: center;
+  min-width: 3rem;
+  min-height: 2.25rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+.vs-key-btn.is-recording { border-color: var(--danger); color: var(--danger); }
+
+.vs-switch-row { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }
+.vs-switch-text { display: flex; flex-direction: column; gap: 0.125rem; min-width: 0; }
+.vs-switch-label { font-size: var(--fs-sm); font-weight: 700; cursor: pointer; }
+.vs-switch {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 2.75rem;
+  height: 1.5rem;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.vs-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+.vs-switch:checked { background: var(--ghost-strong); border-color: transparent; }
+.vs-switch:checked::after { transform: translateX(1.25rem); background: var(--on-accent); }
+.vs-switch:focus-visible { outline: none; box-shadow: var(--focus); }
+
+.vs-cam { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.vs-cam-preview {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius);
+  background: var(--bg);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.vs-cam-preview .vc-media { object-fit: cover; }
+.vs-cam-empty { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); color: var(--text-faint); text-align: center; padding: var(--space-4); }
+.vs-cam-side { display: flex; flex-direction: column; gap: var(--space-3); }
+.vs-cam-btn.is-active { background: var(--danger-solid); border-color: transparent; color: var(--on-danger); }
+@media (max-width: 720px) { .vs-cam { grid-template-columns: 1fr; } }
+
+.vs-select:focus-visible,
+.vs-range:focus-visible,
+.vs-sens-range:focus-visible { outline: none; box-shadow: var(--focus); }
+
+@media (prefers-reduced-motion: reduce) {
+  .vs-meter-fill,
+  .vs-switch,
+  .vs-switch::after { transition: none; }
+}
+
+@media (forced-colors: active) {
+  .vs-meter { border: 1px solid CanvasText; }
+  .vs-meter-fill { background: CanvasText; }
+  .vs-meter.is-open .vs-meter-fill { background: Highlight; }
+  .vs-meter-mark { background: Highlight; }
+  .vs-switch { border-color: CanvasText; }
+  .vs-switch:checked { background: Highlight; }
+  .vs-switch::after { background: CanvasText; }
+  .vs-radio:has(.vs-radio-input:checked) { outline: 2px solid Highlight; }
+  .vc-ctl.is-ptt-open { outline: 2px solid Highlight; }
+  .vs-select:focus-visible,
+  .vs-range:focus-visible,
+  .vs-sens-range:focus-visible,
+  .vs-switch:focus-visible { outline: 3px solid Highlight; outline-offset: 2px; }
+}
+
+/* câmera ligada na barra do palco */
+.vc-ctl-lg.is-active:not(.vc-ctl-share) { background: var(--ghost); border-color: var(--ghost); color: var(--on-accent); }
+.vc-ctl-lg.is-active:not(.vc-ctl-share):hover:not(:disabled) { background: var(--ghost-strong); color: var(--on-accent); }
+.vc-conn-status { flex-wrap: nowrap; white-space: nowrap; }
+.vc-conn-info { min-width: 0; }
+@media (forced-colors: active) { .vc-ctl-lg.is-active { outline: 2px solid Highlight; } }
+.vs-root .btn { display: inline-flex; align-items: center; gap: var(--space-2); }

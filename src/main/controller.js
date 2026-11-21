@@ -44,6 +44,7 @@ function createController({
   getChatView = null,
   getVoiceView = null,
   publishSnapshot = null,
+  getExtraView = null,
   timers = { setInterval: (...a) => setInterval(...a), clearInterval: (...a) => clearInterval(...a) },
 } = {}) {
   const nowSec = () => Math.floor(now() / 1000);
@@ -117,7 +118,13 @@ function createController({
   function getView() {
     const manualAvailableAt = lastManualAt !== null && lastManualAt + manualCooldownMs > now()
       ? lastManualAt + manualCooldownMs : null;
+    let extra = {};
+    try {
+      const x = getExtraView && getExtraView();
+      if (x && typeof x === 'object') extra = x;
+    } catch { extra = {}; }
     return {
+      ...extra,
       configured: state !== null,
       profile: state ? { accountId: state.accountId, personaName: state.personaName ?? null } : null,
       summary: state ? tracker.summarize(state) : null,

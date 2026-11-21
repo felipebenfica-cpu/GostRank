@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; font-src 'self'; connect-src 'none'">
+  <title>Ghost Rank — banco de testes da voz</title>
+  <link rel="stylesheet" href="../src/renderer/styles.css">
+  <link rel="stylesheet" href="../src/renderer/voice.css">
+  <link rel="stylesheet" href="harness-voice.css">
+</head>
+<body class="hv-body">
+  <div class="hv-app">
+    <aside class="hv-side" aria-label="Barra lateral">
+      <h1 class="hv-server">Os Assombrados</h1>
+      <nav class="hv-channels" aria-label="Canais">
+        <p class="hv-cat">Canais de voz</p>
+        <button id="hv-ch-geral" class="hv-ch" type="button">🔊 Geral</button>
+        <button id="hv-ch-ranked" class="hv-ch" type="button">🔊 Ranqueada</button>
+        <p class="hv-cat">Mensagens diretas</p>
+        <button id="hv-dm-lua" class="hv-ch" type="button">📞 Lua</button>
+        <button id="hv-open-settings" class="hv-ch" type="button">⚙ Configurações de voz</button>
+      </nav>
+      <div id="voice-connection" class="hv-conn"></div>
+      <div class="hv-user">
+        <span class="hv-me">Fantasma Noturno</span>
+        <div id="voice-user-controls"></div>
+      </div>
+    </aside>
+    <main class="hv-main" id="hv-main">
+      <div id="voice-stage" class="hv-stage"></div>
+      <div id="hv-settings" class="hv-settings" hidden></div>
+    </main>
+  </div>
+  <script src="fake-livekit.js"></script>
+  <script src="../src/renderer/voice.js"></script>
+  <script src="harness-voice.js"></script>
+</body>
+</html>

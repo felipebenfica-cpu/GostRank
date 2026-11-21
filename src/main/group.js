@@ -437,6 +437,7 @@ module.exports = {
   groupError,
   safeErrorCode,
   computeProgress,
+  toMmr,
   validateGroupName,
   normalizeInviteCode,
   isUuid,

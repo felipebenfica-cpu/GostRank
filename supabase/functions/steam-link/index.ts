@@ -8,7 +8,7 @@ import {
   steamId64ToAccountId, verifyAssertionParams,
 } from '../_shared/steam_openid.js';
 import {
-  UUID_RE, bearerToken, getUserFromToken, jsonResponse, pageResponse, restCall, supabaseConfig,
+  UUID_RE, bearerToken, getUserFromToken, jsonResponse, pageResponse, preflightResponse, restCall, supabaseConfig,
 } from '../_shared/http.js';
 
 type Deps = {
@@ -35,7 +35,7 @@ export function createHandler({ getEnv, fetchImpl = fetch, now = () => Date.now(
     const route = path.endsWith('/start') ? 'start' : path.endsWith('/callback') ? 'callback' : '';
 
     if (route === 'start') {
-      if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { Allow: 'POST, OPTIONS' } });
+      if (req.method === 'OPTIONS') return preflightResponse({ Allow: 'POST, OPTIONS' });
       if (req.method !== 'POST') return jsonResponse(405, { error: 'method_not_allowed' }, { Allow: 'POST, OPTIONS' });
       if (!cfg) return jsonResponse(500, { error: 'server_misconfigured' });
       try {

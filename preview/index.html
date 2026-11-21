@@ -1,44 +1,43 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'">
+  <meta name="color-scheme" content="dark light">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'">
   <title>Ghost Rank (prévia)</title>
   <link rel="stylesheet" href="../src/renderer/styles.css">
+  <link rel="stylesheet" href="../src/renderer/chat.css">
+  <link rel="stylesheet" href="../src/renderer/settings.css">
   <link rel="stylesheet" href="../src/renderer/voice.css">
 </head>
 <body>
   <a class="skip-link" href="#conteudo">Ir para o conteúdo</a>
 
-  <div id="app" class="app" data-view="mmr" data-sidebar="closed" data-members="hidden">
+  <div id="app" class="app" data-mode="home" data-page="mmr" data-sidebar="closed" data-members="hidden" data-auth="none">
 
-    <!-- 1. Trilho -->
-    <nav class="rail" aria-label="Ghost Rank e grupo">
+    <!-- 1. Trilho de servidores -->
+    <nav class="rail" aria-label="Servidores">
       <ul class="rail-list" role="list">
-        <li class="rail-item">
+        <li id="rail-home-item" class="rail-item">
           <span class="rail-pill" aria-hidden="true"></span>
-          <button id="rail-home" class="rail-btn rail-home" type="button" aria-label="Meu MMR" data-tip="Meu MMR">
+          <button id="rail-home" class="rail-btn rail-home" type="button" aria-label="Mensagens diretas e amigos" data-tip="Mensagens diretas">
             <svg class="rail-ghost" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" focusable="false">
               <path class="ghost-body" d="M12 2C7.6 2 4 5.5 4 10v11l2.5-2 2.5 2 3-2 3 2 2.5-2 2.5 2V10c0-4.5-3.6-8-8-8z"/>
               <circle class="ghost-eye" cx="9.2" cy="10.2" r="1.5"/>
               <circle class="ghost-eye" cx="14.8" cy="10.2" r="1.5"/>
             </svg>
+            <span id="rail-home-badge" class="rail-badge" aria-hidden="true" hidden></span>
           </button>
         </li>
       </ul>
+      <ul id="rail-dms" class="rail-list" role="list" aria-label="Mensagens não lidas"></ul>
       <hr class="rail-sep">
+      <ul id="rail-servers" class="rail-list" role="list" aria-label="Seus servidores"></ul>
       <ul class="rail-list" role="list">
-        <li id="rail-group-item" class="rail-item" hidden>
-          <span class="rail-pill" aria-hidden="true"></span>
-          <button id="rail-group" class="rail-btn rail-group" type="button" aria-label="Grupo" data-tip="Grupo">
-            <span id="rail-group-initials" class="rail-initials" aria-hidden="true"></span>
-          </button>
-        </li>
         <li class="rail-item">
           <span class="rail-pill" aria-hidden="true"></span>
-          <button id="rail-add" class="rail-btn rail-add" type="button" aria-haspopup="dialog" aria-label="Criar ou entrar em um grupo" data-tip="Criar ou entrar em um grupo">
+          <button id="rail-add" class="rail-btn rail-add" type="button" aria-haspopup="dialog" aria-label="Adicionar um servidor" data-tip="Adicionar um servidor">
             <svg class="btn-icon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>
         </li>
@@ -48,98 +47,76 @@
     <!-- 2. Barra lateral -->
     <div id="sidebar" class="sidebar">
       <div class="sidebar-head">
-        <p id="sidebar-home-title" class="sidebar-title">Ghost Rank</p>
-        <div id="group-head" class="group-head" hidden>
-          <button id="group-menu-btn" class="group-menu-btn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="group-menu">
-            <span id="group-name" class="group-name"></span>
+        <button id="home-find" class="find-btn" type="button" aria-haspopup="dialog" aria-keyshortcuts="Control+K">Encontrar ou começar uma conversa</button>
+        <div id="server-head" class="group-head" hidden>
+          <button id="server-menu-btn" class="group-menu-btn" type="button" aria-haspopup="menu" aria-expanded="false">
+            <span id="server-name" class="group-name"></span>
             <svg class="btn-icon chevron" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
-          <div id="group-menu" class="menu" role="menu" aria-labelledby="group-menu-btn" hidden>
-            <button id="btn-invite" class="menu-item" type="button" role="menuitem" tabindex="-1" aria-haspopup="dialog">
-              <span>Convidar</span>
-              <svg class="btn-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-1a5 5 0 0 1 5-5h3a5 5 0 0 1 5 5v1"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/></svg>
-            </button>
-            <button id="btn-leave" class="menu-item menu-item-danger" type="button" role="menuitem" tabindex="-1" aria-haspopup="dialog">
-              <span>Sair do grupo</span>
-              <svg class="btn-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/><path d="M12 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"/></svg>
-            </button>
-          </div>
         </div>
       </div>
 
       <nav class="sidebar-scroll" aria-label="Canais">
-        <div id="group-channels" hidden>
-          <section class="channel-section" aria-labelledby="sec-text">
-            <h2 id="sec-text" class="channel-section-title">Texto</h2>
-            <ul class="channel-list" role="list">
-              <li>
-                <button id="ch-chat" class="channel" type="button" data-view="chat">
-                  <svg class="channel-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
-                  <span class="channel-name">chat</span>
-                </button>
-              </li>
-            </ul>
-          </section>
-          <section class="channel-section" aria-labelledby="sec-voice">
-            <h2 id="sec-voice" class="channel-section-title">Voz</h2>
-            <ul class="channel-list" role="list">
-              <li>
-                <button id="ch-voice" class="channel channel-voice" type="button" data-view="voice" aria-describedby="voice-channel-note">
-                  <svg class="channel-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
-                  <span class="channel-name">Sala de voz</span>
-                  <span id="voice-channel-state" class="visually-hidden"></span>
-                </button>
-                <p id="voice-channel-note" class="channel-note" hidden>Voz indisponível</p>
-                <div id="voice-channel-members" class="voice-channel-members"></div>
-              </li>
-            </ul>
-          </section>
-        </div>
-
-        <section class="channel-section" aria-labelledby="sec-ghost">
-          <h2 id="sec-ghost" class="channel-section-title">Ghost Rank</h2>
+        <div id="home-nav">
           <ul class="channel-list" role="list">
             <li>
-              <button id="ch-mmr" class="channel" type="button" data-view="mmr">
-                <svg class="channel-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/></svg>
+              <button id="nav-friends" class="channel channel-big" type="button">
+                <svg class="channel-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-1a5 5 0 0 1 5-5h3a5 5 0 0 1 5 5v1"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M21.5 20v-1a5 5 0 0 0-3.5-4.8"/></svg>
+                <span class="channel-name">Amigos</span>
+                <span id="nav-friends-badge" class="count-badge" hidden></span>
+              </button>
+            </li>
+            <li>
+              <button id="nav-mmr" class="channel channel-big" type="button">
+                <svg class="channel-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/></svg>
                 <span class="channel-name">Meu MMR</span>
               </button>
             </li>
-            <li id="ch-ranking-item" hidden>
-              <button id="ch-ranking" class="channel" type="button" data-view="ranking">
+          </ul>
+          <div id="dm-section" class="channel-section">
+            <div class="section-row">
+              <h2 class="channel-section-title">Mensagens diretas</h2>
+              <button id="dm-new" class="mini-btn" type="button" aria-label="Começar uma conversa" data-tip="Começar uma conversa">
+                <svg class="btn-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
+            </div>
+            <ul id="dm-list" class="channel-list" role="list"></ul>
+            <p id="dm-empty" class="sidebar-note" hidden>Nenhuma conversa ainda. Abra a lista de amigos e mande um oi.</p>
+          </div>
+          <div id="sidebar-cta" class="sidebar-cta" hidden>
+            <p class="sidebar-cta-text">Entre na sua conta para adicionar amigos, criar servidores, conversar e jogar com voz.</p>
+            <button id="sidebar-signin" class="btn btn-small btn-primary" type="button" aria-haspopup="dialog">Entrar</button>
+          </div>
+        </div>
+
+        <div id="server-nav" hidden>
+          <ul class="channel-list" role="list">
+            <li>
+              <button id="nav-ranking" class="channel" type="button">
                 <svg class="channel-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3"/><path d="M7 5H4v2a3 3 0 0 0 3 3"/></svg>
                 <span class="channel-name">Ranking dos fantasmas</span>
               </button>
             </li>
           </ul>
-        </section>
-
-        <div id="sidebar-cta" class="sidebar-cta" hidden>
-          <p class="sidebar-cta-text">Junte até 10 amigos para comparar o MMR, conversar e jogar com voz.</p>
-          <button id="sidebar-add" class="btn btn-small btn-primary" type="button" aria-haspopup="dialog">Criar ou entrar em um grupo</button>
+          <hr class="sidebar-sep">
+          <div id="channel-tree"></div>
         </div>
       </nav>
 
       <div id="voice-connection" class="voice-connection"></div>
 
       <section class="user-panel" aria-label="Sua conta">
-        <span id="user-avatar" class="avatar avatar-sm user-avatar" data-tone="0" aria-hidden="true">
-          <svg class="user-avatar-ghost" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
-            <path class="ghost-body" d="M12 2C7.6 2 4 5.5 4 10v11l2.5-2 2.5 2 3-2 3 2 2.5-2 2.5 2V10c0-4.5-3.6-8-8-8z"/>
-            <circle class="ghost-eye" cx="9.2" cy="10.2" r="1.5"/>
-            <circle class="ghost-eye" cx="14.8" cy="10.2" r="1.5"/>
-          </svg>
-          <span id="user-initials" class="avatar-initials"></span>
-          <span id="user-dot" class="status-dot" hidden></span>
-        </span>
-        <div class="user-text">
-          <p id="account-name" class="user-name">Ghost Rank</p>
-          <p id="user-status" class="user-status"></p>
-        </div>
+        <button id="user-chip" class="user-chip" type="button" aria-haspopup="menu" aria-label="Seu status">
+          <span id="user-avatar-slot" class="user-avatar-slot"></span>
+          <span class="user-text">
+            <span id="account-name" class="user-name">Ghost Rank</span>
+            <span id="user-status" class="user-status"></span>
+          </span>
+        </button>
         <div class="user-actions">
           <div id="voice-user-controls" class="voice-user-controls"></div>
           <button id="btn-signin" class="btn btn-small btn-primary" type="button" aria-haspopup="dialog" hidden>Entrar</button>
-          <button id="btn-account" class="icon-btn" type="button" aria-haspopup="dialog" aria-label="Minha conta" data-tip="Minha conta" hidden>
+          <button id="btn-account" class="icon-btn" type="button" aria-haspopup="dialog" aria-label="Configurações de usuário" data-tip="Configurações de usuário" hidden>
             <svg class="btn-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           </button>
         </div>
@@ -148,21 +125,40 @@
 
     <!-- 3 e 4. Área principal e lista de membros -->
     <div class="main-col">
-      <header id="channel-head" class="channel-head" data-view="mmr">
+      <header id="channel-head" class="channel-head">
         <button id="btn-sidebar" class="icon-btn only-narrow" type="button" aria-label="Abrir canais" aria-expanded="false" aria-controls="sidebar">
           <svg class="btn-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
         </button>
-        <span class="head-icon" aria-hidden="true">
-          <svg class="channel-icon hi-chat" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
-          <svg class="channel-icon hi-voice" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
-          <svg class="channel-icon hi-mmr" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/></svg>
-          <svg class="channel-icon hi-ranking" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3"/><path d="M7 5H4v2a3 3 0 0 0 3 3"/></svg>
-        </span>
+        <span id="head-icon" class="head-icon" aria-hidden="true"></span>
         <h1 id="channel-title" class="channel-title" tabindex="-1">Meu MMR</h1>
-        <p id="channel-topic" class="channel-topic"></p>
+        <p id="channel-topic" class="channel-topic" hidden></p>
+        <div id="friends-tabs" class="friends-tabs" role="tablist" aria-label="Amigos" hidden>
+          <button class="ftab" type="button" role="tab" data-tab="online" aria-selected="true" aria-controls="view-friends">Online</button>
+          <button class="ftab" type="button" role="tab" data-tab="all" aria-selected="false" aria-controls="view-friends" tabindex="-1">Todos</button>
+          <button class="ftab" type="button" role="tab" data-tab="pending" aria-selected="false" aria-controls="view-friends" tabindex="-1">Pendentes<span id="ftab-pending-badge" class="count-badge" hidden></span></button>
+          <button class="ftab" type="button" role="tab" data-tab="blocked" aria-selected="false" aria-controls="view-friends" tabindex="-1">Bloqueados</button>
+          <button class="ftab ftab-add" type="button" role="tab" data-tab="add" aria-selected="false" aria-controls="view-friends" tabindex="-1">Adicionar amigo</button>
+        </div>
         <div class="head-actions">
+          <button id="btn-call" class="icon-btn" type="button" aria-label="Iniciar chamada de voz" data-tip="Chamada de voz" hidden>
+            <svg class="btn-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>
+          </button>
+          <button id="btn-video" class="icon-btn" type="button" aria-label="Iniciar chamada de vídeo" data-tip="Chamada de vídeo" hidden>
+            <svg class="btn-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3z"/></svg>
+          </button>
+          <button id="btn-pins" class="icon-btn" type="button" aria-label="Mensagens fixadas" aria-haspopup="dialog" data-tip="Mensagens fixadas" hidden>
+            <svg class="btn-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M9 4h6l-1 6 4 3v2H6v-2l4-3-1-6z"/><line x1="12" y1="15" x2="12" y2="21"/></svg>
+          </button>
           <button id="btn-members" class="icon-btn" type="button" aria-label="Lista de membros" aria-pressed="false" aria-controls="members" data-tip="Lista de membros" hidden>
             <svg class="btn-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-1a5 5 0 0 1 5-5h3a5 5 0 0 1 5 5v1"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M21.5 20v-1a5 5 0 0 0-3.5-4.8"/></svg>
+          </button>
+          <form id="head-search" class="head-search" role="search" hidden>
+            <label for="head-search-input" class="visually-hidden">Buscar mensagens</label>
+            <input id="head-search-input" type="search" placeholder="Buscar" autocomplete="off" spellcheck="false" maxlength="100">
+            <svg class="btn-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6.5"/><line x1="16" y1="16" x2="21" y2="21"/></svg>
+          </form>
+          <button id="btn-keys" class="icon-btn" type="button" aria-label="Atalhos de teclado" aria-haspopup="dialog" aria-keyshortcuts="Control+/" data-tip="Atalhos (Ctrl+/)">
+            <svg class="btn-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="10.1"/><line x1="10" y1="10" x2="10" y2="10.1"/><line x1="14" y1="10" x2="14" y2="10.1"/><line x1="18" y1="10" x2="18" y2="10.1"/><line x1="7" y1="14" x2="17" y2="14"/></svg>
           </button>
         </div>
       </header>
@@ -306,48 +302,60 @@
     </div>
           </div>
 
-          <!-- # chat -->
-          <section id="view-chat" class="view view-chat" aria-labelledby="channel-title" hidden>
-            <p id="chat-status" class="chat-status" hidden>
-              <svg class="btn-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="M12 3 2.5 20h19L12 3z"/><line x1="12" y1="10" x2="12" y2="14.5"/><line x1="12" y1="17.4" x2="12" y2="17.5"/></svg>
-              <span>Não deu para atualizar o chat. Tentando de novo…</span>
-            </p>
-            <div id="chat-scroll" class="chat-scroll" role="region" aria-label="Mensagens do grupo" tabindex="0">
-              <div class="chat-welcome">
-                <span class="chat-welcome-icon" aria-hidden="true">
-                  <svg class="channel-icon" viewBox="0 0 24 24" width="36" height="36" aria-hidden="true" focusable="false"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
-                </span>
-                <h2 class="chat-welcome-title">Boas-vindas a #chat</h2>
-                <p id="chat-welcome-text" class="chat-welcome-text">Este é o começo do chat do grupo.</p>
-                <p id="chat-empty" class="chat-empty">Nenhuma mensagem ainda. Diga oi para o grupo!</p>
-              </div>
-              <ol id="chat-list" class="chat-list"></ol>
-            </div>
-            <p id="chat-live" class="visually-hidden" aria-live="polite"></p>
-            <div class="chat-bottom">
-              <p id="chat-error" class="form-error" role="alert" hidden></p>
-              <form id="form-chat" class="chat-form" novalidate>
-                <label for="chat-input" class="visually-hidden">Mensagem para o grupo</label>
-                <textarea id="chat-input" class="chat-input" rows="1" maxlength="1000" spellcheck="true" aria-describedby="chat-help chat-counter" placeholder="Conversar em #chat"></textarea>
-                <button id="chat-send" class="icon-btn chat-send" type="submit" aria-label="Enviar">
-                  <svg class="btn-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M4 12 20 4l-6 16-3-7-7-1z"/></svg>
-                </button>
+          <!-- Amigos -->
+          <section id="view-friends" class="view view-friends" role="tabpanel" aria-labelledby="channel-title" hidden>
+            <div id="friends-add" class="friends-add" hidden>
+              <h2 class="friends-add-title">Adicionar amigo</h2>
+              <p class="help">Você pode adicionar amigos com o nome de usuário do Ghost Rank deles. Comece a digitar para ver quem aparece.</p>
+              <form id="form-add-friend" class="add-friend-form" novalidate>
+                <label for="add-friend-input" class="visually-hidden">Nome de usuário</label>
+                <input id="add-friend-input" type="text" autocomplete="off" spellcheck="false" autocapitalize="off" maxlength="33" placeholder="Digite o nome de usuário, por exemplo luacheia" aria-describedby="add-friend-status" aria-controls="add-friend-results">
+                <button id="add-friend-submit" class="btn btn-primary btn-small" type="submit" disabled>Enviar pedido de amizade</button>
               </form>
-              <div class="chat-foot">
-                <p id="chat-help" class="chat-help">Enter envia. Shift+Enter quebra a linha.</p>
-                <p id="chat-counter" class="chat-counter" hidden></p>
+              <p id="add-friend-status" class="add-friend-status" role="status" aria-live="polite"></p>
+              <ul id="add-friend-results" class="people-list" role="list" aria-label="Pessoas encontradas"></ul>
+            </div>
+            <div id="friends-list-wrap" class="friends-list-wrap">
+              <div class="friends-filter">
+                <label for="friends-filter-input" class="visually-hidden">Buscar entre os amigos</label>
+                <input id="friends-filter-input" type="search" placeholder="Buscar" autocomplete="off" spellcheck="false" maxlength="40">
+              </div>
+              <h2 id="friends-count" class="friends-count"></h2>
+              <ul id="friends-list" class="people-list" role="list" aria-labelledby="friends-count"></ul>
+              <div id="friends-empty" class="view-empty friends-empty" hidden>
+                <svg class="empty-ghost" viewBox="0 0 24 24" width="64" height="64" aria-hidden="true" focusable="false">
+                  <path class="ghost-body" d="M12 2C7.6 2 4 5.5 4 10v11l2.5-2 2.5 2 3-2 3 2 2.5-2 2.5 2V10c0-4.5-3.6-8-8-8z"/>
+                  <circle class="ghost-eye" cx="9.2" cy="10.2" r="1.5"/>
+                  <circle class="ghost-eye" cx="14.8" cy="10.2" r="1.5"/>
+                </svg>
+                <p id="friends-empty-text" class="view-empty-text"></p>
               </div>
             </div>
           </section>
 
-          <!-- Sala de voz -->
-          <section id="view-voice" class="view view-voice" aria-labelledby="channel-title" hidden>
+          <!-- Chamada na DM (fica em cima do chat) e canal de voz -->
+          <section id="view-voice" class="view view-voice" aria-label="Chamada de voz" hidden>
             <div id="voice-fallback" class="view-empty" hidden>
               <svg class="btn-icon" viewBox="0 0 24 24" width="40" height="40" aria-hidden="true" focusable="false"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="21"/><line x1="3" y1="3" x2="21" y2="21"/></svg>
               <p class="view-empty-title">Voz indisponível</p>
-              <p class="view-empty-text">A sala de voz não carregou nesta versão do Ghost Rank. O chat e o ranking continuam funcionando.</p>
+              <p class="view-empty-text">A voz não carregou nesta versão do Ghost Rank. O chat e o ranking continuam funcionando.</p>
             </div>
             <div id="voice-stage" class="voice-stage"></div>
+          </section>
+
+          <!-- Canal de texto ou DM (chat.js monta aqui) -->
+          <section id="view-chat" class="view view-chat" aria-labelledby="channel-title" hidden>
+            <section id="chat-root" class="chat-root"></section>
+            <div id="chat-fallback" class="chat-fallback" hidden>
+              <ol id="fallback-list" class="fallback-list" aria-label="Mensagens"></ol>
+              <form id="fallback-form" class="chat-form" novalidate>
+                <label for="fallback-input" class="visually-hidden">Mensagem</label>
+                <textarea id="fallback-input" class="chat-input" rows="1" maxlength="2000"></textarea>
+                <button class="icon-btn chat-send" type="submit" aria-label="Enviar">
+                  <svg class="btn-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M4 12 20 4l-6 16-3-7-7-1z"/></svg>
+                </button>
+              </form>
+            </div>
           </section>
 
           <!-- Ranking dos fantasmas -->
@@ -357,80 +365,94 @@
               <ol id="ranking-list" class="ranking-list"></ol>
             </div>
           </section>
+
+          <!-- Vazio (sem servidor/canal) -->
+          <section id="view-empty" class="view view-empty-page" aria-labelledby="channel-title" hidden>
+            <div class="view-empty">
+              <svg class="empty-ghost" viewBox="0 0 24 24" width="72" height="72" aria-hidden="true" focusable="false">
+                <path class="ghost-body" d="M12 2C7.6 2 4 5.5 4 10v11l2.5-2 2.5 2 3-2 3 2 2.5-2 2.5 2V10c0-4.5-3.6-8-8-8z"/>
+                <circle class="ghost-eye" cx="9.2" cy="10.2" r="1.5"/>
+                <circle class="ghost-eye" cx="14.8" cy="10.2" r="1.5"/>
+              </svg>
+              <p id="empty-title" class="view-empty-title">Nada por aqui</p>
+              <p id="empty-text" class="view-empty-text"></p>
+            </div>
+          </section>
         </main>
 
-        <aside id="members" class="members" aria-label="Membros do grupo" hidden>
-          <section id="members-voice-section" class="members-section" aria-labelledby="members-voice-title" hidden>
-            <h2 id="members-voice-title" class="members-title">Na voz — 0</h2>
-            <ul id="members-voice" class="member-list" role="list"></ul>
-          </section>
-          <section id="members-all-section" class="members-section" aria-labelledby="members-all-title">
-            <h2 id="members-all-title" class="members-title">Membros — 0</h2>
-            <ul id="members-list" class="member-list" role="list"></ul>
-          </section>
+        <aside id="members" class="members" aria-label="Membros" hidden>
+          <div id="members-body"></div>
         </aside>
       </div>
     </div>
   </div>
   <div id="scrim" class="scrim" hidden></div>
+  <div id="popout-layer" class="popout-layer"></div>
+  <div id="toast-region" class="toast-region" role="status" aria-live="polite"></div>
 
-  <!-- Diálogo: criar ou entrar em um grupo -->
-  <dialog id="dlg-group" class="dialog dialog-wide" aria-labelledby="group-none-title">
-    <div class="form">
-      <h2 id="group-none-title" class="dialog-title">Seu grupo de fantasmas</h2>
-      <p class="help">Junte até 10 amigos para comparar quem está mais perto da meta, conversar e jogar com voz e tela compartilhada.</p>
-
-      <p id="group-signin-hint" class="tab-hint" hidden>
-        <svg class="btn-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
-        <span id="group-signin-hint-text">Entre na sua conta para usar o grupo</span>
-      </p>
-      <p id="group-already" class="tab-hint" hidden>Você já está em um grupo. Para criar ou entrar em outro, saia do grupo atual pelo menu com o nome dele.</p>
-
-      <div id="group-none" class="group-forms" hidden>
-        <form id="form-create-group" class="card form" novalidate aria-labelledby="create-group-title">
-          <h3 id="create-group-title" class="section-title">Criar grupo</h3>
-          <div class="field">
-            <label for="create-group-name">Nome do grupo</label>
-            <input id="create-group-name" type="text" autocomplete="off" spellcheck="false" maxlength="32" aria-describedby="create-group-help" required>
-            <p id="create-group-help" class="help">De 2 a 32 caracteres. Você vira o dono e pode convidar pessoas.</p>
-          </div>
-          <p id="create-group-error" class="form-error" role="alert" hidden></p>
-          <div class="actions">
-            <button id="create-group-submit" class="btn btn-primary" type="submit">Criar grupo</button>
-          </div>
-        </form>
-
-        <form id="form-join-group" class="card form" novalidate aria-labelledby="join-group-title">
-          <h3 id="join-group-title" class="section-title">Entrar com código</h3>
-          <div class="field">
-            <label for="join-group-code">Código de convite</label>
-            <input id="join-group-code" class="code-input" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="14" aria-describedby="join-group-help" required>
-            <p id="join-group-help" class="help">São 10 letras e números, como <strong>K7M2QX9PTA</strong>. Peça ao dono do grupo.</p>
-          </div>
-          <p id="join-group-error" class="form-error" role="alert" hidden></p>
-          <div class="actions">
-            <button id="join-group-submit" class="btn btn-primary" type="submit">Entrar no grupo</button>
-          </div>
-        </form>
+  <!-- Diálogo: criar servidor ou entrar com convite -->
+  <dialog id="dlg-server" class="dialog dialog-server" aria-labelledby="server-dlg-title">
+    <div id="server-pane-create" class="form">
+      <h2 id="server-dlg-title" class="dialog-title">Crie seu servidor</h2>
+      <p class="help">Seu servidor é onde você e seus amigos se encontram: canais de texto, salas de voz, transmissão de tela e o ranking de MMR.</p>
+      <form id="form-create-server" class="form" novalidate>
+        <div class="field">
+          <label for="create-server-name">Nome do servidor</label>
+          <input id="create-server-name" type="text" autocomplete="off" spellcheck="false" maxlength="32" aria-describedby="create-server-help" required>
+          <p id="create-server-help" class="help">De 2 a 32 caracteres. Você vira o dono e pode mudar isso depois.</p>
+        </div>
+        <fieldset class="swatches" aria-describedby="swatch-help">
+          <legend>Cor do ícone</legend>
+          <p id="swatch-help" class="visually-hidden">Escolha a cor de fundo do ícone do servidor.</p>
+          <div id="create-server-colors" class="swatch-row"></div>
+        </fieldset>
+        <p id="create-server-error" class="form-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button class="btn" type="button" data-close>Cancelar</button>
+          <button id="create-server-submit" class="btn btn-primary" type="submit">Criar</button>
+        </div>
+      </form>
+      <div class="server-switch">
+        <p class="server-switch-title">Já tem um convite?</p>
+        <button id="to-join" class="btn btn-wide" type="button">Entrar em um servidor</button>
       </div>
-
-      <div class="dialog-actions">
-        <button class="btn" type="button" data-close>Fechar</button>
-        <button id="btn-group-signin" class="btn btn-primary" type="button" hidden>Entrar</button>
-      </div>
+    </div>
+    <div id="server-pane-join" class="form" hidden>
+      <h2 class="dialog-title">Entrar em um servidor</h2>
+      <p class="help">Cole o código ou o link do convite. Convites do Ghost Rank têm 10 letras e números, como <strong>K7M2QX9PTA</strong>.</p>
+      <form id="form-join-server" class="form" novalidate>
+        <div class="field">
+          <label for="join-server-code">Código ou link do convite</label>
+          <input id="join-server-code" class="code-input" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="200" required>
+        </div>
+        <div id="invite-preview" class="invite-preview" hidden aria-live="polite">
+          <span id="invite-preview-icon" class="server-icon server-icon-lg" aria-hidden="true"></span>
+          <div class="invite-preview-text">
+            <p class="caption">Você foi convidado para</p>
+            <p id="invite-preview-name" class="invite-preview-name"></p>
+            <p id="invite-preview-meta" class="caption"></p>
+          </div>
+        </div>
+        <p id="join-server-error" class="form-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button id="to-create" class="btn" type="button">Voltar</button>
+          <button id="join-server-submit" class="btn btn-primary" type="submit">Ver convite</button>
+        </div>
+      </form>
     </div>
   </dialog>
 
-  <!-- Diálogo: convidar -->
+  <!-- Diálogo: convidar pessoas -->
   <dialog id="dlg-invite" class="dialog" aria-labelledby="dlg-invite-title">
     <div class="form">
-      <h2 id="dlg-invite-title" class="dialog-title">Convidar para o grupo</h2>
+      <h2 id="dlg-invite-title" class="dialog-title">Convide amigos</h2>
+      <p class="help">Envie este código para quem você quiser no servidor. Na tela “Entrar em um servidor” a pessoa cola o código e entra.</p>
       <p id="invite-loading" class="caption" role="status"></p>
       <div id="invite-box" class="invite" hidden>
         <p id="invite-label" class="label">Código de convite</p>
         <div class="invite-row">
           <p id="invite-code" class="invite-code" aria-labelledby="invite-label" tabindex="-1"></p>
-          <button id="btn-copy-invite" class="btn" type="button">
+          <button id="btn-copy-invite" class="btn btn-primary" type="button">
             <svg class="btn-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
             <span>Copiar</span>
           </button>
@@ -438,30 +460,138 @@
         <p id="invite-expiry" class="caption"></p>
         <p id="invite-status" class="invite-status" role="status"></p>
       </div>
-      <p id="group-error" class="form-error" role="alert" hidden></p>
+      <details id="invite-options" class="invite-options">
+        <summary>Editar link de convite</summary>
+        <div class="field-row field-row-2">
+          <div class="field">
+            <label for="invite-age">Expirar depois de</label>
+            <select id="invite-age">
+              <option value="">Nunca</option>
+              <option value="1800">30 minutos</option>
+              <option value="3600">1 hora</option>
+              <option value="21600">6 horas</option>
+              <option value="43200">12 horas</option>
+              <option value="86400">1 dia</option>
+              <option value="604800">7 dias</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="invite-uses">Número máximo de usos</label>
+            <select id="invite-uses">
+              <option value="">Sem limite</option>
+              <option value="1">1 uso</option>
+              <option value="5">5 usos</option>
+              <option value="10">10 usos</option>
+              <option value="25">25 usos</option>
+              <option value="50">50 usos</option>
+              <option value="100">100 usos</option>
+            </select>
+          </div>
+        </div>
+        <button id="invite-generate" class="btn btn-small" type="button">Gerar novo código</button>
+      </details>
+      <p id="invite-error" class="form-error" role="alert" hidden></p>
       <div class="dialog-actions">
         <button class="btn" type="button" data-close>Fechar</button>
       </div>
     </div>
   </dialog>
 
-  <!-- Diálogo: cartão de perfil -->
-  <dialog id="dlg-profile" class="dialog dialog-profile" aria-labelledby="profile-name">
-    <div class="profile">
-      <div class="profile-banner" aria-hidden="true"></div>
-      <div class="profile-head">
-        <span id="profile-avatar" class="avatar avatar-lg" data-tone="0" aria-hidden="true"><span id="profile-initials" class="avatar-initials"></span></span>
-        <button class="icon-btn profile-close" type="button" data-close aria-label="Fechar">
-          <svg class="btn-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
-        </button>
+  <!-- Diálogo: criar ou editar canal -->
+  <dialog id="dlg-channel" class="dialog" aria-labelledby="channel-dlg-title">
+    <form id="form-channel" class="form" novalidate>
+      <h2 id="channel-dlg-title" class="dialog-title">Criar canal</h2>
+      <fieldset id="channel-kind" class="choices">
+        <legend>Tipo de canal</legend>
+        <label class="choice">
+          <input type="radio" name="channel-kind" value="text" checked>
+          <span class="choice-text"><span class="choice-title"># Texto</span><span class="choice-desc">Mensagens, imagens, emojis, opiniões e piadas.</span></span>
+        </label>
+        <label class="choice">
+          <input type="radio" name="channel-kind" value="voice">
+          <span class="choice-text"><span class="choice-title">Voz</span><span class="choice-desc">Conversar por voz, vídeo e compartilhar a tela.</span></span>
+        </label>
+      </fieldset>
+      <div class="field">
+        <label for="channel-name">Nome do canal</label>
+        <input id="channel-name" type="text" autocomplete="off" spellcheck="false" maxlength="32" aria-describedby="channel-name-help" required>
+        <p id="channel-name-help" class="help"></p>
       </div>
-      <div class="profile-body">
-        <h2 id="profile-name" class="profile-name"></h2>
-        <p id="profile-tags" class="profile-tags"></p>
-        <div id="profile-mmr" class="profile-mmr"></div>
-        <div class="dialog-actions">
-          <button id="profile-remove" class="btn btn-small btn-quiet-danger" type="button" aria-haspopup="dialog" hidden>Remover do grupo</button>
-        </div>
+      <div id="channel-topic-field" class="field" hidden>
+        <label for="channel-topic-input">Tópico do canal</label>
+        <textarea id="channel-topic-input" rows="3" maxlength="1024"></textarea>
+      </div>
+      <div class="field">
+        <label for="channel-category">Categoria</label>
+        <select id="channel-category"></select>
+      </div>
+      <p id="channel-error" class="form-error" role="alert" hidden></p>
+      <div class="dialog-actions dialog-actions-split">
+        <button id="channel-delete" class="btn btn-danger" type="button" hidden>Apagar canal</button>
+        <span class="spacer"></span>
+        <button class="btn" type="button" data-close>Cancelar</button>
+        <button id="channel-submit" class="btn btn-primary" type="submit">Criar canal</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Diálogo genérico: pergunta de texto -->
+  <dialog id="dlg-prompt" class="dialog" aria-labelledby="prompt-title">
+    <form id="form-prompt" class="form" novalidate>
+      <h2 id="prompt-title" class="dialog-title"></h2>
+      <div class="field">
+        <label id="prompt-label" for="prompt-input"></label>
+        <input id="prompt-input" type="text" autocomplete="off" spellcheck="false" aria-describedby="prompt-help prompt-error">
+        <p id="prompt-help" class="help" hidden></p>
+      </div>
+      <p id="prompt-error" class="form-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button class="btn" type="button" data-close>Cancelar</button>
+        <button id="prompt-ok" class="btn btn-primary" type="submit">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Diálogo genérico: confirmação -->
+  <dialog id="dlg-confirm" class="dialog" aria-labelledby="confirm-title" aria-describedby="confirm-body">
+    <div class="form">
+      <h2 id="confirm-title" class="dialog-title"></h2>
+      <p id="confirm-body" class="help"></p>
+      <div class="dialog-actions">
+        <button class="btn" type="button" data-close>Cancelar</button>
+        <button id="confirm-ok" class="btn btn-primary" type="button">Confirmar</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Busca rápida (Ctrl+K) -->
+  <dialog id="dlg-quick" class="dialog dialog-quick" aria-labelledby="quick-title">
+    <div class="form">
+      <h2 id="quick-title" class="visually-hidden">Busca rápida</h2>
+      <label for="quick-input" class="visually-hidden">Para onde você quer ir?</label>
+      <input id="quick-input" class="quick-input" type="text" role="combobox" aria-expanded="true" aria-controls="quick-list" aria-autocomplete="list" autocomplete="off" spellcheck="false" maxlength="60" placeholder="Para onde você quer ir?">
+      <ul id="quick-list" class="quick-list" role="listbox" aria-label="Resultados"></ul>
+      <p class="caption quick-tip">Dica: comece com <kbd>@</kbd> para pessoas, <kbd>#</kbd> para canais de texto, <kbd>!</kbd> para voz e <kbd>*</kbd> para servidores.</p>
+    </div>
+  </dialog>
+
+  <!-- Atalhos de teclado -->
+  <dialog id="dlg-keys" class="dialog dialog-wide" aria-labelledby="keys-title">
+    <div class="form">
+      <h2 id="keys-title" class="dialog-title">Atalhos de teclado</h2>
+      <dl class="keys-list">
+        <div><dt><kbd>Ctrl</kbd> + <kbd>K</kbd></dt><dd>Busca rápida: servidores, canais, DMs e amigos</dd></div>
+        <div><dt><kbd>Alt</kbd> + <kbd>↑</kbd> / <kbd>↓</kbd></dt><dd>Canal ou conversa anterior / próximo</dd></div>
+        <div><dt><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd> / <kbd>↓</kbd></dt><dd>Canal não lido anterior / próximo</dd></div>
+        <div><dt><kbd>Esc</kbd></dt><dd>Marcar o canal como lido (ou fechar o que estiver aberto)</dd></div>
+        <div><dt><kbd>↑</kbd></dt><dd>No campo vazio: editar sua última mensagem</dd></div>
+        <div><dt><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd></dt><dd>Mutar ou desmutar o microfone</dd></div>
+        <div><dt><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>D</kbd></dt><dd>Ensurdecer ou voltar a ouvir</dd></div>
+        <div><dt><kbd>Shift</kbd> + <kbd>F10</kbd></dt><dd>Abrir o menu do item em foco (como o clique direito)</dd></div>
+        <div><dt><kbd>Ctrl</kbd> + <kbd>/</kbd></dt><dd>Mostrar esta lista</dd></div>
+      </dl>
+      <div class="dialog-actions">
+        <button class="btn btn-primary" type="button" data-close>Entendi</button>
       </div>
     </div>
   </dialog>
@@ -674,36 +804,15 @@
     </form>
   </dialog>
 
-  <!-- Diálogo: sair do grupo -->
-  <dialog id="dlg-leave" class="dialog" aria-labelledby="dlg-leave-title" aria-describedby="dlg-leave-text">
-    <form id="form-leave" class="form" novalidate>
-      <h2 id="dlg-leave-title" class="dialog-title">Sair do grupo?</h2>
-      <p id="dlg-leave-text" class="help"></p>
-      <p id="leave-error" class="form-error" role="alert" hidden></p>
-      <div class="dialog-actions">
-        <button class="btn" type="button" data-close>Cancelar</button>
-        <button id="leave-submit" class="btn btn-danger-solid" type="submit">Sim, sair do grupo</button>
-      </div>
-    </form>
-  </dialog>
-
-  <!-- Diálogo: remover membro -->
-  <dialog id="dlg-remove" class="dialog" aria-labelledby="dlg-remove-title" aria-describedby="dlg-remove-text">
-    <form id="form-remove" class="form" novalidate>
-      <h2 id="dlg-remove-title" class="dialog-title"></h2>
-      <p id="dlg-remove-text" class="help">A pessoa sai do grupo, do ranking e do chat. Ela pode voltar se receber um novo convite.</p>
-      <p id="remove-error" class="form-error" role="alert" hidden></p>
-      <div class="dialog-actions">
-        <button class="btn" type="button" data-close>Cancelar</button>
-        <button id="remove-submit" class="btn btn-danger-solid" type="submit">Remover do grupo</button>
-      </div>
-    </form>
-  </dialog>
-
 
   <script src="fake-livekit.js"></script>
-  <script src="../src/renderer/voice.js"></script>
   <script src="mock-bridge.js"></script>
+  <script src="../src/renderer/ui.js"></script>
+  <script src="../src/renderer/emoji-data.js"></script>
+  <script src="../src/renderer/chat.js"></script>
+  <script src="../src/renderer/settings.js"></script>
+  <script src="../src/renderer/voice.js"></script>
+  <script src="../src/renderer/shell.js"></script>
   <script src="../src/renderer/app.js"></script>
 </body>
 </html>

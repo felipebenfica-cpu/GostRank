@@ -2,6 +2,7 @@
 
 const { isAppUrl } = require('./security');
 const { UserInputError } = require('./controller');
+const { API, wrapCall } = require('./api');
 
 const CHANNELS = Object.freeze({
   getView: 'gr:getView',
@@ -27,6 +28,8 @@ const CHANNELS = Object.freeze({
   voiceListSources: 'gr:voice:listSources',
   voicePickSource: 'gr:voice:pickSource',
   steamLink: 'gr:steam:link',
+  // Etapa 6: ações novas (tabela em api.js)
+  ...Object.fromEntries(API.map((e) => [e.method, e.channel])),
 });
 
 const GENERIC_ERROR = 'Ocorreu um erro inesperado. Tente novamente.';
@@ -112,9 +115,25 @@ function validateRecoverPayload(p) {
 }
 
 function validateProfilePayload(p) {
-  if (!checkObject(p, [], ['displayName', 'mmrVisibility'])) return null;
-  if (Object.keys(p).length === 0) return null;
+  // Etapa 6: username, about (texto ou null) e avatarColor (0..7) também.
+  if (!isPlainObject(p) || Object.getOwnPropertySymbols(p).length > 0) return null;
+  const allowed = ['displayName', 'mmrVisibility', 'username', 'about', 'avatarColor'];
+  const keys = Object.keys(p);
+  if (keys.length === 0 || keys.some((k) => !allowed.includes(k))) return null;
   const out = {};
+  if ('username' in p) {
+    if (typeof p.username !== 'string' || p.username.length > 64) return null;
+    out.username = p.username;
+  }
+  if ('about' in p) {
+    if (p.about !== null && (typeof p.about !== 'string' || p.about.length > 400)) return null;
+    out.about = p.about;
+  }
+  if ('avatarColor' in p) {
+    if (!Number.isInteger(p.avatarColor) || p.avatarColor < 0 || p.avatarColor > 7) return null;
+    out.avatarColor = p.avatarColor;
+  }
+  if (('displayName' in p && !isInputValue(p.displayName)) || ('mmrVisibility' in p && !isInputValue(p.mmrVisibility))) return null;
   if ('displayName' in p) {
     if (typeof p.displayName !== 'string') return null;
     out.displayName = p.displayName;
@@ -210,6 +229,7 @@ function wrapHandler(validate, action, { raw = false } = {}) {
 
 function buildHandlers(controller, {
   account = null, session = null, group = null, chatFeed = null, voice = null, picker = null, steam = null,
+  app = null, getMode = () => null,
 } = {}) {
   const viaAccount = (fn) => async (d) => {
     if (!account || !account.available) throw new UserInputError(UNAVAILABLE_ERROR);
@@ -249,7 +269,12 @@ function buildHandlers(controller, {
     [CHANNELS.signIn]: wrapHandler(validateCredentialsPayload, viaAccount((d) => account.signIn(d))),
     [CHANNELS.signOut]: wrapHandler(validateEmptyPayload, viaAccount(() => account.signOut())),
     [CHANNELS.recover]: wrapHandler(validateRecoverPayload, viaAccount((d) => account.recover(d))),
-    [CHANNELS.updateProfile]: wrapHandler(validateProfilePayload, viaAccount((d) => account.updateProfile(d))),
+    [CHANNELS.updateProfile]: wrapHandler(validateProfilePayload, viaAccount(async (d) => {
+      const extended = ['username', 'about', 'avatarColor'].some((k) => k in d);
+      if (app && getMode() === 'v3') return app.updateProfile(d);
+      if (extended) throw new UserInputError('Atualize o banco (0003): esta função ainda não existe no servidor. Rode o 0003_discord.sql no Supabase.');
+      return account.updateProfile(d);
+    })),
     [CHANNELS.deleteAccount]: wrapHandler(validateResetPayload, viaAccount(async () => {
       await account.deleteAccount();
       if (session) session.clear();
@@ -288,7 +313,21 @@ function buildHandlers(controller, {
       await steam.startLink();
       return {};
     }, { raw: true }),
+    ...buildApiHandlers(controller, app),
   };
+}
+
+/** Ações da Etapa 6 com a mesma checagem de origem dos canais antigos. */
+function buildApiHandlers(controller, app) {
+  const out = {};
+  for (const entry of API) {
+    const call = wrapCall(entry, app, () => controller.getView());
+    out[entry.channel] = async (event, payload) => {
+      if (!isTrustedSender(event)) return { ok: false, error: 'Origem não autorizada.' };
+      return call(payload);
+    };
+  }
+  return out;
 }
 
 function registerIpc(controller, services) {
@@ -324,5 +363,6 @@ module.exports = {
   errorMessage,
   wrapHandler,
   buildHandlers,
+  buildApiHandlers,
   registerIpc,
 };

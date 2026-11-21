@@ -1,0 +1,17 @@
+/* Só do banco de testes da voz (preview/harness-voice.html). */
+.hv-body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font-sans); }
+.hv-app { display: grid; grid-template-columns: 15rem 1fr; height: 100vh; }
+.hv-side { display: flex; flex-direction: column; background: var(--sidebar-bg); border-right: 1px solid var(--border); min-height: 0; }
+.hv-server { margin: 0; padding: var(--space-3) var(--space-4); font-size: var(--fs-md); border-bottom: 1px solid var(--border); }
+.hv-channels { flex: 1; display: flex; flex-direction: column; gap: 2px; padding: var(--space-3) var(--space-2); overflow: auto; }
+.hv-cat { margin: var(--space-3) var(--space-2) var(--space-1); font-size: 0.6875rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.hv-ch { text-align: left; padding: var(--space-2); border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.hv-ch:hover, .hv-ch[aria-current="true"] { background: var(--active); color: var(--text); }
+.hv-conn { padding: var(--space-2) var(--space-3); border-top: 1px solid var(--border); background: var(--user-bg); }
+.hv-conn[hidden] { display: none; }
+.hv-user { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) var(--space-3); background: var(--user-bg); border-top: 1px solid var(--border); }
+.hv-me { font-size: var(--fs-sm); font-weight: 700; }
+.hv-main { position: relative; min-width: 0; min-height: 0; background: var(--main-bg); overflow: auto; }
+.hv-stage { height: 100%; }
+.hv-settings { position: absolute; inset: 0; padding: var(--space-6); background: var(--main-bg); overflow: auto; }
+.hv-settings[hidden] { display: none; }

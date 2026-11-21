@@ -16,6 +16,8 @@ function stripComments(js) {
 
 const SCRIPTS = [
   path.join(RENDERER, 'app.js'),
+  path.join(RENDERER, 'ui.js'),
+  path.join(RENDERER, 'shell.js'),
   path.join(RENDERER, 'voice.js'),
   path.join(PREVIEW, 'mock-bridge.js'),
   path.join(PREVIEW, 'fake-livekit.js'),
@@ -75,17 +77,39 @@ test('a tela carrega voice.css depois de styles.css e a prévia aponta para src/
   assert.match(preview, /href="\.\.\/src\/renderer\/voice\.css"/);
 });
 
-test('a janela tem os contêineres da voz e a navegação acessível', () => {
+test('a janela tem os contêineres da voz, do chat e a navegação acessível', () => {
   const html = fs.readFileSync(path.join(RENDERER, 'index.html'), 'utf8');
-  for (const id of ['voice-stage', 'voice-channel-members', 'voice-connection', 'voice-user-controls']) {
+  for (const id of ['voice-stage', 'voice-connection', 'voice-user-controls', 'chat-root', 'rail-servers', 'channel-tree', 'dm-list', 'friends-tabs', 'members', 'popout-layer', 'toast-region', 'dlg-server', 'dlg-invite', 'dlg-quick']) {
     assert.match(html, new RegExp('id="' + id + '"'), id);
   }
   assert.match(html, /<nav class="rail" aria-label=/);
   assert.match(html, /<nav class="sidebar-scroll" aria-label="Canais"/);
   assert.match(html, /<main id="conteudo"/);
-  const app = stripComments(fs.readFileSync(path.join(RENDERER, 'app.js'), 'utf8'));
-  assert.match(app, /typeof gv\.init === 'function'/, 'protege a chamada da voz');
-  assert.match(app, /aria-current/);
+  assert.match(html, /role="tablist"/);
+  const shell = stripComments(fs.readFileSync(path.join(RENDERER, 'shell.js'), 'utf8'));
+  assert.match(shell, /typeof gv\.init === 'function'/, 'protege a chamada da voz');
+  assert.match(shell, /typeof gc\.init === 'function'/, 'protege a chamada do chat');
+  assert.match(shell, /typeof gs\.init === 'function'/, 'protege a chamada das configurações');
+  assert.match(shell, /aria-current/);
+});
+
+test('a tela carrega os módulos antes da casca e do app', () => {
+  const html = fs.readFileSync(path.join(RENDERER, 'index.html'), 'utf8');
+  const order = ['ui.js', 'emoji-data.js', 'chat.js', 'settings.js', 'voice.js', 'shell.js', 'app.js'].map((n) => html.indexOf('<script src="' + n + '"></script>'));
+  order.forEach((i, k) => assert.ok(i > 0, 'script ' + k));
+  for (let k = 1; k < order.length; k++) assert.ok(order[k - 1] < order[k], 'ordem dos scripts');
+  for (const css of ['chat.css', 'settings.css']) assert.match(html, new RegExp('href="' + css.replace('.', '\\.') + '"'));
+});
+
+test('a prévia simula a ponte completa da Etapa 6', () => {
+  const js = fs.readFileSync(path.join(PREVIEW, 'mock-bridge.js'), 'utf8');
+  for (const name of ['select', 'searchUsers', 'sendFriendRequest', 'acceptFriend', 'declineFriend', 'removeFriend', 'blockUser', 'unblockUser', 'openDm',
+    'setStatus', 'setCustomStatus', 'createServer', 'previewInvite', 'joinServer', 'leaveServer', 'deleteServer', 'updateServer', 'createInvite', 'listInvites',
+    'revokeInvite', 'setMemberRole', 'transferOwnership', 'kickMember', 'banMember', 'unbanMember', 'listBans', 'setNickname', 'createCategory', 'updateCategory',
+    'deleteCategory', 'createChannel', 'updateChannel', 'deleteChannel', 'sendMessage', 'editMessage', 'deleteMessage', 'toggleReaction', 'pinMessage', 'listPinned',
+    'loadOlder', 'markRead', 'searchMessages', 'setTyping', 'openExternal', 'updatePrefs', 'muteTarget', 'voiceToken', 'setVoiceState', 'uploadAvatar', 'removeAvatar']) {
+    assert.match(js, new RegExp('\\b' + name + ': function'), name);
+  }
 });
 
 test('miniaturas de tela só entram se forem data:image/', () => {

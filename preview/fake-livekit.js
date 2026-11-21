@@ -5,6 +5,9 @@
    participante e participantes falsos que falam, mutam e transmitem a tela (a imagem da
    transmissão é um canvas desenhado aqui). requestPictureInPicture não existe no canvas:
    a prévia esconde o botão.
+   Etapa 6: câmera (local e do Eco, desenhada em canvas), switchActiveDevice, restartTrack e um
+   microfone local com faixa de áudio de verdade (oscilador em rajadas, como fala) para o medidor,
+   a detecção de voz e o apertar-para-falar funcionarem na prévia.
    As identidades batem com os membros simulados em preview/mock-bridge.js. */
 (function () {
   'use strict';
@@ -77,12 +80,81 @@
     ctx.fillRect(520, 332, 70, 10);
   }
 
-  function FakeTrack(kind, source, title) {
+  var CAM_COLORS = { local: ['#1d3a35', '#8fe9d6'], eco: ['#2a2650', '#a798ff'] };
+
+  function drawCamera(canvas, title, who) {
+    canvas.width = 1280;
+    canvas.height = 720;
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    var c = CAM_COLORS[who] || CAM_COLORS.eco;
+    var g = ctx.createLinearGradient(0, 0, 1280, 720);
+    g.addColorStop(0, c[0]);
+    g.addColorStop(1, '#0a0c14');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 1280, 720);
+    // "pessoa" (silhueta de fantasma)
+    ctx.fillStyle = c[1];
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.arc(640, 330, 150, Math.PI, 0);
+    ctx.lineTo(790, 600);
+    for (var i = 0; i < 5; i++) ctx.lineTo(790 - (i + 0.5) * 60, i % 2 ? 600 : 560);
+    ctx.lineTo(490, 600);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#0a0c14';
+    ctx.beginPath(); ctx.arc(585, 330, 18, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(695, 330, 18, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(10,12,20,0.6)';
+    ctx.fillRect(0, 660, 1280, 60);
+    ctx.fillStyle = '#eceefa';
+    ctx.font = '600 30px system-ui, sans-serif';
+    ctx.fillText(title, 24, 700);
+  }
+
+  // Microfone simulado: oscilador ligado em rajadas (parece fala no medidor).
+  var fakeMicCtx = null;
+  function fakeMicTrack() {
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return null;
+      if (!fakeMicCtx) fakeMicCtx = new Ctx();
+      if (fakeMicCtx.state === 'suspended' && fakeMicCtx.resume) fakeMicCtx.resume().catch(function () {});
+      var osc = fakeMicCtx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = 180;
+      var amp = fakeMicCtx.createGain();
+      amp.gain.value = 0;
+      var dest = fakeMicCtx.createMediaStreamDestination();
+      osc.connect(amp);
+      amp.connect(dest);
+      osc.start();
+      var t = 0;
+      var timer = setInterval(function () {
+        t++;
+        // 1,5 s falando, 1,5 s em silêncio (com um chiado baixinho)
+        var talking = Math.floor(t / 15) % 2 === 0;
+        var level = talking ? 0.12 + Math.random() * 0.25 : 0.002 + Math.random() * 0.003;
+        try { amp.gain.setTargetAtTime(level, fakeMicCtx.currentTime, 0.02); } catch (e) { amp.gain.value = level; }
+        osc.frequency.value = 140 + Math.random() * 120;
+      }, 100);
+      var track = dest.stream.getAudioTracks()[0];
+      var stop = track.stop.bind(track);
+      track.stop = function () { clearInterval(timer); try { osc.stop(); } catch (e) { /* ignora */ } stop(); };
+      return track;
+    } catch (e) { return null; }
+  }
+
+  function FakeTrack(kind, source, title, who) {
     this.sid = 'TR_' + (++sidSeq);
     this.kind = kind;
     this.source = source;
     this.title = title || '';
+    this.who = who || '';
     this.attached = [];
+    this.mediaStreamTrack = null;
   }
   FakeTrack.prototype.attach = function () {
     var node;
@@ -90,11 +162,14 @@
       node = document.createElement('audio');
     } else {
       node = document.createElement('canvas');
-      drawScreen(node, this.title);
+      if (this.source === Track.Source.Camera) drawCamera(node, this.title, this.who);
+      else drawScreen(node, this.title);
     }
     this.attached.push(node);
     return node;
   };
+  FakeTrack.prototype.restartTrack = function () { return wait(120); };
+  FakeTrack.prototype.stop = function () { if (this.mediaStreamTrack) { try { this.mediaStreamTrack.stop(); } catch (e) { /* ignora */ } } };
   FakeTrack.prototype.detach = function (one) {
     var list = one ? this.attached.filter(function (n) { return n === one; }) : this.attached;
     this.attached = one ? this.attached.filter(function (n) { return n !== one; }) : [];
@@ -103,7 +178,7 @@
   };
 
   /* Publicação: remota começa assinada (assinatura automática) e pode ser desassinada. */
-  function Publication(room, participant, kind, source, title, remote) {
+  function Publication(room, participant, kind, source, title, remote, who) {
     this.trackSid = 'PUB_' + (++sidSeq);
     this.kind = kind;
     this.source = source;
@@ -112,15 +187,16 @@
     this._room = room;
     this._participant = participant;
     this._title = title;
+    this._who = who || '';
     this._remote = !!remote;
     this._desired = true;
-    this.track = remote ? null : new FakeTrack(kind, source, title);
+    this.track = remote ? null : new FakeTrack(kind, source, title, who);
     this.isSubscribed = !remote;
   }
   Publication.prototype._subscribeNow = function () {
     if (!this._remote || this.track || !this._desired || this._room.state !== 'connected') return;
     if (this._participant._pubs.indexOf(this) < 0) return;
-    this.track = new FakeTrack(this.kind, this.source, this._title);
+    this.track = new FakeTrack(this.kind, this.source, this._title, this._who);
     this.isSubscribed = true;
     this._room.emit(RoomEvent.TrackSubscribed, this.track, this, this._participant);
   };
@@ -159,6 +235,9 @@
   };
   Object.defineProperty(Participant.prototype, 'isMicrophoneEnabled', {
     get: function () { var p = this.getTrackPublication(Track.Source.Microphone); return !!p && !p.isMuted; }
+  });
+  Object.defineProperty(Participant.prototype, 'isCameraEnabled', {
+    get: function () { var p = this.getTrackPublication(Track.Source.Camera); return !!p && !p.isMuted; }
   });
   Object.defineProperty(Participant.prototype, 'isScreenShareEnabled', {
     get: function () { return !!this.getTrackPublication(Track.Source.ScreenShare); }
@@ -207,6 +286,7 @@
         var pub = local.getTrackPublication(Track.Source.Microphone);
         if (on && !pub) {
           pub = new Publication(room, local, 'audio', Track.Source.Microphone, '', false);
+          pub.track.mediaStreamTrack = fakeMicTrack();
           local._add(pub);
           room.emit(RoomEvent.LocalTrackPublished, pub, local);
         } else if (pub && pub.isMuted === !!on) {
@@ -230,10 +310,33 @@
         }
       });
     };
+    local.setCameraEnabled = function (on, captureOptions, publishOptions) {
+      return wait(250).then(function () {
+        if (room.state !== 'connected') throw new Error('desconectado');
+        var pub = local.getTrackPublication(Track.Source.Camera);
+        if (on && !pub) {
+          room.lastCamera = { captureOptions: captureOptions || null, publishOptions: publishOptions || null };
+          pub = new Publication(room, local, 'video', Track.Source.Camera, 'Sua câmera (simulada)', false, 'local');
+          local._add(pub);
+          room.emit(RoomEvent.LocalTrackPublished, pub, local);
+        } else if (!on && pub) {
+          local._remove(pub);
+          pub.track.detach();
+          room.emit(RoomEvent.LocalTrackUnpublished, pub, local);
+        }
+      });
+    };
     this.localParticipant = local;
+    this.activeDevices = { audioinput: 'default', audiooutput: 'default', videoinput: 'default' };
   }
   Room.prototype = Object.create(Emitter.prototype);
   Room.prototype.constructor = Room;
+
+  Room.prototype.switchActiveDevice = function (kind, deviceId) {
+    var room = this;
+    return wait(80).then(function () { room.activeDevices[kind] = deviceId; return true; });
+  };
+  Room.prototype.getActiveDevice = function (kind) { return this.activeDevices[kind]; };
 
   Room.prototype._later = function (ms, fn) {
     var room = this;
@@ -241,8 +344,8 @@
   };
 
   // Publicação remota: avisa e, como a assinatura automática, assina logo em seguida.
-  Room.prototype._publish = function (p, kind, source, title, muted, announce) {
-    var pub = new Publication(this, p, kind, source, title, true);
+  Room.prototype._publish = function (p, kind, source, title, muted, announce, who) {
+    var pub = new Publication(this, p, kind, source, title, true, who);
     pub.isMuted = !!muted;
     p._add(pub);
     if (announce) this.emit(RoomEvent.TrackPublished, pub, p);
@@ -284,8 +387,12 @@
       // Lua começa a transmitir a tela
       room._later(900, function () { room._startScreen(lua, 'Tela de Lua (simulada)', true); });
 
-      // Eco entra depois
-      room._later(2500, function () { room._addRemote(new Participant(ECO, 'Eco'), true, true); });
+      // Eco entra depois e liga a câmera
+      room._later(2500, function () {
+        var eco = new Participant(ECO, 'Eco');
+        room._addRemote(eco, true, true);
+        room._later(700, function () { room._publish(eco, 'video', Track.Source.Camera, 'Câmera do Eco (simulada)', false, true, 'eco'); });
+      });
 
       // o ping varia um pouco
       room._timers.push(setInterval(function () { room.engine.client.rtt = 30 + Math.round(Math.random() * 25); }, 3000));
@@ -309,6 +416,8 @@
     var room = this;
     if (room.state === 'disconnected') return Promise.resolve();
     room.state = 'disconnected';
+    var mp = room.localParticipant.getTrackPublication(Track.Source.Microphone);
+    if (mp && mp.track) mp.track.stop();
     room._timers.forEach(function (t) { clearTimeout(t); clearInterval(t); });
     room._timers = [];
     room.remoteParticipants.clear();

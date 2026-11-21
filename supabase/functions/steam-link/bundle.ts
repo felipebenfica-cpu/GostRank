@@ -151,6 +151,20 @@ const __shared_http = (() => {
     'Referrer-Policy': 'no-referrer',
   };
 
+  // CORS: a versao web (navegador) chama as funcoes de outra origem. A autorizacao continua sendo o
+  // token do usuario no cabecalho Authorization (sem cookies), entao liberar qualquer origem e seguro.
+  const CORS_HEADERS = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Max-Age': '86400',
+  };
+
+  /** Resposta ao preflight (OPTIONS) do navegador. */
+  function preflightResponse(extra = {}) {
+    return new Response(null, { status: 204, headers: { ...CORS_HEADERS, ...extra } });
+  }
+
   /** Token do cabecalho Authorization (ou null). */
   function bearerToken(req) {
     const h = req.headers.get('authorization') || '';
@@ -161,7 +175,7 @@ const __shared_http = (() => {
   function jsonResponse(status, obj, extra = {}) {
     return new Response(JSON.stringify(obj), {
       status,
-      headers: { ...BASE_HEADERS, 'Content-Type': 'application/json; charset=utf-8', ...extra },
+      headers: { ...BASE_HEADERS, ...CORS_HEADERS, 'Content-Type': 'application/json; charset=utf-8', ...extra },
     });
   }
 
@@ -243,11 +257,11 @@ const __shared_http = (() => {
     if (!/^https?:\/\/[^/?#]+$/.test(supabaseUrl) || !serviceKey) return null;
     return { supabaseUrl, serviceKey, anonKey };
   }
-  return { UUID_RE, bearerToken, jsonResponse, PAGE_CSP, pageResponse, getUserFromToken, restCall, supabaseConfig };
+  return { UUID_RE, CORS_HEADERS, preflightResponse, bearerToken, jsonResponse, PAGE_CSP, pageResponse, getUserFromToken, restCall, supabaseConfig };
 })();
 
 const { STATE_RE, buildSteamLoginUrl, callbackUrl, checkAuthentication, randomState, steamId64ToAccountId, verifyAssertionParams } = __shared_steam_openid;
-const { UUID_RE, bearerToken, getUserFromToken, jsonResponse, pageResponse, restCall, supabaseConfig } = __shared_http;
+const { UUID_RE, bearerToken, getUserFromToken, jsonResponse, pageResponse, preflightResponse, restCall, supabaseConfig } = __shared_http;
 
 // Edge Function "steam-link": vincula a conta Steam ao perfil do Ghost Rank.
 //   POST /steam-link/start    (Authorization: Bearer <access_token>) -> {url}
@@ -279,7 +293,7 @@ export function createHandler({ getEnv, fetchImpl = fetch, now = () => Date.now(
     const route = path.endsWith('/start') ? 'start' : path.endsWith('/callback') ? 'callback' : '';
 
     if (route === 'start') {
-      if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { Allow: 'POST, OPTIONS' } });
+      if (req.method === 'OPTIONS') return preflightResponse({ Allow: 'POST, OPTIONS' });
       if (req.method !== 'POST') return jsonResponse(405, { error: 'method_not_allowed' }, { Allow: 'POST, OPTIONS' });
       if (!cfg) return jsonResponse(500, { error: 'server_misconfigured' });
       try {
