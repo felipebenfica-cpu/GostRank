@@ -125,7 +125,7 @@ export function createHandler({ getEnv, fetchImpl = fetch, now = () => Date.now(
         identity: user.id,
         name: displayName,
         room,
-        ttlSeconds: 3600,
+        ttlSeconds: 600, // 10 min: quem for expulso não consegue reentrar depois disso (a sala conectada continua)
         now: now(),
         canPublishData: true,
       });

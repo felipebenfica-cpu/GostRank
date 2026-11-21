@@ -1,7 +1,14 @@
 'use strict';
 
 // Etapa 6: presença (online/ausente/não perturbe/offline), quem está em cada canal de voz e
-// "digitando…", pelos canais privados do Realtime: server:<id>, user:<id> e dm:<id>.
+// "digitando…", pelos canais privados do Realtime: server:<id>, user:<id> e dm:<id>, além dos avisos
+// privados me:<eu> (amizades/servidores mudaram) e do aviso "members" em server:<id>.
+//
+// Aviso: presence e broadcast são só visuais. O Realtime não amarra a chave do presence ao JWT, então
+// um membro pode tentar se anunciar como outro. Mitigação aqui: a identidade é sempre a CHAVE do track
+// (nunca um userId declarado no conteúdo), entradas cujo userId declarado não bate com a chave são
+// descartadas, e em server:/dm: só contam pessoas que são membros/participantes daquele alvo
+// (isMember). O status em user:<id> só pode ser escrito pelo dono (política do banco) e tem prioridade.
 
 const { isUuid } = require('./rest');
 
@@ -25,6 +32,7 @@ function cleanVoice(meta) {
 
 function createPresenceService({
   realtime, onChange = () => {}, onTyping = () => {}, getIdleSeconds = null,
+  isMember = () => true, onPrivateEvent = () => {},
   timers = { setInterval: (...a) => setInterval(...a), clearInterval: (...a) => clearInterval(...a) },
 } = {}) {
   let meId = null;
@@ -67,13 +75,60 @@ function createPresenceService({
     const ch = realtime.channel(topic, { private: true, presenceKey: meId || '' });
     ch.on('presence', () => emit());
     ch.on('broadcast', ({ event, payload }) => {
+      const [kind, id] = topic.split(':');
       if (event === 'typing' && payload && typeof payload === 'object') {
-        try { onTyping({ target: payload.target, userId: payload.userId }); } catch { /* ignora */ }
+        const uid = typeof payload.userId === 'string' ? payload.userId.toLowerCase() : '';
+        if (!isUuid(uid) || uid === meId || !memberOk(kind, id, uid)) return;
+        if (!typingTargetOk(kind, id, payload.target)) return;
+        try { onTyping({ target: payload.target, userId: uid }); } catch { /* ignora */ }
+      } else if (kind === 'server' && event === 'members') {
+        try { onPrivateEvent({ kind: 'members', serverId: id }); } catch { /* ignora */ }
       }
     });
     ch.on('status', (s) => { if (s === 'joined') trackFor(topic, ch); });
     subs.set(topic, ch);
     trackFor(topic, ch);
+  }
+
+  function memberOk(kind, id, uid) {
+    if (kind !== 'server' && kind !== 'dm') return true;
+    try { return isMember(kind, id, uid) !== false; } catch { return false; }
+  }
+
+  /** "digitando" num tópico só vale para um alvo daquele tópico (canal do servidor ou a própria DM). */
+  function typingTargetOk(kind, id, target) {
+    if (typeof target !== 'string') return false;
+    const [tk, tid] = target.split(':');
+    if (kind === 'dm') return tk === 'd' && tid === id;
+    if (kind === 'server') return tk === 'c' && isUuid(tid);
+    return false;
+  }
+
+  /** Metas confiáveis de uma chave: descarta quem declara outro userId no conteúdo. */
+  function trustedMetas(key, metas) {
+    return (Array.isArray(metas) ? metas : []).filter((m) => m && typeof m === 'object'
+      && (m.userId === undefined || String(m.userId).toLowerCase() === key));
+  }
+
+  /** Avisos privados do banco (me:<eu>): amizades e servidores mudaram. */
+  let meChannel = null;
+  function openMeChannel() {
+    if (meChannel || !meId || !realtime || !realtime.available) return;
+    meChannel = realtime.channel(`me:${meId}`, { private: true });
+    meChannel.on('broadcast', ({ event, payload }) => {
+      if (event === 'relationships') {
+        try { onPrivateEvent({ kind: 'relationships' }); } catch { /* ignora */ }
+      } else if (event === 'servers') {
+        const gid = payload && typeof payload.group_id === 'string' && isUuid(payload.group_id)
+          ? payload.group_id.toLowerCase() : null;
+        try { onPrivateEvent({ kind: 'servers', serverId: gid }); } catch { /* ignora */ }
+      }
+    });
+  }
+  function closeMeChannel() {
+    if (!meChannel) return;
+    try { meChannel.unsubscribe(); } catch { /* ignora */ }
+    meChannel = null;
   }
 
   function unsubscribe(topic) {
@@ -92,12 +147,14 @@ function createPresenceService({
     for (const id of dmIds.slice(0, 50)) if (isUuid(id)) want.add(`dm:${id}`);
     for (const t of [...subs.keys()]) if (!want.has(t)) unsubscribe(t);
     for (const t of want) subscribe(t);
+    openMeChannel();
     emit();
   }
 
   function setMe(id) {
     if (id === meId) return;
     for (const t of [...subs.keys()]) unsubscribe(t);
+    closeMeChannel();
     meId = id;
     if (id && !idleTimer && typeof getIdleSeconds === 'function') {
       idleTimer = timers.setInterval(checkIdle, IDLE_POLL_MS);
@@ -149,12 +206,23 @@ function createPresenceService({
       if (!isUuid(uid)) return;
       if (!(uid in out) || STATUS_RANK[st] > STATUS_RANK[out[uid]]) out[uid] = st;
     };
+    // 1º user:<id> (só o dono escreve, confiável); depois server:, só para quem não tem tópico próprio.
+    const fromOwner = new Set();
     for (const [topic, ch] of subs) {
       const [kind, owner] = topic.split(':');
-      if (kind === 'dm') continue;
+      if (kind !== 'user') continue;
       for (const [key, metas] of Object.entries(ch.presence || {})) {
-        if (kind === 'user' && key !== owner) continue; // só o dono do tópico
-        for (const m of metas) put(key, cleanStatus(m && m.status));
+        if (key !== owner) continue; // só o dono do tópico
+        fromOwner.add(key);
+        for (const m of trustedMetas(key, metas)) put(key, cleanStatus(m.status));
+      }
+    }
+    for (const [topic, ch] of subs) {
+      const [kind, id] = topic.split(':');
+      if (kind !== 'server') continue;
+      for (const [key, metas] of Object.entries(ch.presence || {})) {
+        if (fromOwner.has(key) || !memberOk(kind, id, key)) continue;
+        for (const m of trustedMetas(key, metas)) put(key, cleanStatus(m.status));
       }
     }
     if (meId) out[meId] = effective();
@@ -168,8 +236,8 @@ function createPresenceService({
       const [kind, id] = topic.split(':');
       if (kind !== 'server' && kind !== 'dm') continue;
       for (const [key, metas] of Object.entries(ch.presence || {})) {
-        if (!isUuid(key)) continue;
-        const m = (metas || []).find((x) => x && (kind === 'dm' ? x.voice === true : isUuid(x.voice)));
+        if (!isUuid(key) || !memberOk(kind, id, key)) continue;
+        const m = trustedMetas(key, metas).find((x) => x && (kind === 'dm' ? x.voice === true : isUuid(x.voice)));
         if (!m) continue;
         const slot = kind === 'dm' ? `dm:${id}` : String(m.voice).toLowerCase();
         const dedupe = `${slot}|${key}`;
@@ -183,6 +251,7 @@ function createPresenceService({
 
   function clear() {
     for (const t of [...subs.keys()]) unsubscribe(t);
+    closeMeChannel();
     if (idleTimer) { timers.clearInterval(idleTimer); idleTimer = null; }
     meId = null;
     preferred = 'online';

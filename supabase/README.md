@@ -145,7 +145,10 @@ os pedidos pendentes, as conversas privadas e as fotos para o modelo novo. Nada 
 4. Pode rodar de novo sem problema (o arquivo e idempotente e nao duplica dados).
 
 Isso ja liga o Realtime (tempo real) e cria os buckets `avatars` e `attachments` no Storage.
-Nao precisa mexer em mais nada no painel para isso.
+
+5. **Recomendado (seguranca):** depois de rodar, va em **Project Settings** > **Realtime** e
+   **desligue "Allow public access"**. Assim so canais privados (com as regras do banco) funcionam;
+   o app ja usa so canais privados.
 
 Conferir: em **Table Editor** devem aparecer `channels`, `relationships`, `dm_channels` e
 `message_reactions`; em **Storage**, os buckets `avatars` (publico) e `attachments` (privado).
@@ -166,7 +169,11 @@ Os segredos do LiveKit ja cadastrados continuam valendo; nao precisa cadastrar d
 
 ### O que o 0006 faz
 
-- Nome de usuario unico (`@usuario`) para todo mundo, gerado a partir do apelido; pode ser trocado.
+- Nome de usuario unico (`@usuario`) para todo mundo; pode ser trocado. Contas antigas ganham o apelido
+  + 4 numeros; contas novas ganham `fantasmaNNNNNN` e o apelido "Fantasma NNNN". Nada e tirado do e-mail.
+  (Quem ja tinha um apelido igual ao comeco do e-mail, de antes, continua com ele ate trocar.)
+- Privacidade: mandar pedido de amizade ou bloquear nao libera o perfil completo da outra pessoa
+  (so nome, @ e foto). Avisos de amizade e de entrada/saida de servidor vao so para quem tem direito.
 - Amigos: pedidos, aceitar, recusar, remover e bloquear; busca de pessoas pelo nome de usuario.
 - Varios servidores por pessoa (ate 50), ate 100 pessoas por servidor; cargos dono, admin e membro;
   expulsar, banir, apelido no servidor, transferir posse.

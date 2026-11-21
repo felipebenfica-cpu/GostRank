@@ -63,6 +63,14 @@ function createSocialService({ rest, users, onChange = () => {} } = {}) {
       list.push({ id: r.other_id.toLowerCase(), relation: r.kind, since: Number.isFinite(t) ? t : null });
     }
     await users.ensure(list.map((x) => x.id));
+    // Pedido enviado e bloqueado não liberam o perfil completo: nome/@/cor/foto vêm da RPC básica.
+    const missing = list.filter((x) => !users.get(x.id)).map((x) => x.id);
+    if (missing.length) {
+      try {
+        const basic = await rest.rpc('relationship_people', {});
+        users.upsertRows((Array.isArray(basic) ? basic : []).filter((r) => r && missing.includes(String(r.id).toLowerCase())));
+      } catch { /* banco sem a RPC: a tela mostra "fantasma" */ }
+    }
     relationships = list;
   }
 

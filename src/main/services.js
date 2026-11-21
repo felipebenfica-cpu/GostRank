@@ -142,6 +142,8 @@ function createAppServices({
       presence = createPresenceService({
         realtime, getIdleSeconds, timers, onChange: emit,
         onTyping: (p) => messages.receiveTyping(p),
+        isMember: (kind, id, uid) => presenceMember(kind, id, uid),
+        onPrivateEvent: (ev) => handlePrivateEvent(ev),
       });
       account = createAccountService({
         config, auth, session, profile, onChange: emit,
@@ -263,9 +265,7 @@ function createAppServices({
       postgres: [
         { event: '*', schema: 'public', table: 'messages' },
         { event: '*', schema: 'public', table: 'message_reactions' },
-        { event: '*', schema: 'public', table: 'relationships', filter: `user_id=eq.${meId}` },
         { event: '*', schema: 'public', table: 'dm_channels' },
-        { event: '*', schema: 'public', table: 'group_members' },
         { event: '*', schema: 'public', table: 'channels' },
         { event: '*', schema: 'public', table: 'channel_categories' },
         { event: '*', schema: 'public', table: 'groups' },
@@ -283,6 +283,40 @@ function createAppServices({
     if (mode !== 'v3') return;
     await Promise.allSettled([social.refresh(), servers.refreshList(), servers.reloadSelected(), messages.refreshUnread(), refreshChannelIndex()]);
     syncPresence();
+  }
+
+  /** Para a presença: só membros/participantes contam (sem lista conhecida, aceita). */
+  function presenceMember(kind, id, uid) {
+    if (!uid) return false;
+    if (uid === meId) return true;
+    if (kind === 'server') {
+      if (!servers || servers.getSelectedId() !== id) return true;
+      const ids = servers.memberIds();
+      return ids.length === 0 || ids.includes(uid);
+    }
+    if (kind === 'dm') {
+      const d = social ? social.getDms().find((x) => x.id === id) : null;
+      return d ? d.userId === uid : true;
+    }
+    return true;
+  }
+
+  /** Avisos privados que substituem relationships/group_members no postgres_changes. */
+  function handlePrivateEvent(ev) {
+    if (!ev || mode !== 'v3') return;
+    if (ev.kind === 'relationships') {
+      debounce('rels', () => social.refreshRelationships());
+    } else if (ev.kind === 'servers') {
+      debounce('list', async () => {
+        await servers.refreshList();
+        await refreshChannelIndex().catch(() => {});
+        if (selection.mode === 'server' && !servers.has(selection.serverId)) await select({ mode: 'home' }).catch(() => {});
+        syncPresence();
+      });
+      if (ev.serverId && ev.serverId === servers.getSelectedId()) debounce('selected', () => servers.reloadSelected());
+    } else if (ev.kind === 'members') {
+      if (ev.serverId && ev.serverId === servers.getSelectedId()) debounce('selected', () => servers.reloadSelected());
+    }
   }
 
   async function handleDbEvent(ev) {

@@ -135,6 +135,10 @@ test.before(() => {
     grant usage on schema realtime to anon, authenticated;
     grant select, insert on realtime.messages to anon, authenticated;
     grant execute on function realtime.topic() to anon, authenticated;
+    create function realtime.send(payload jsonb, event text, topic text, private boolean default true) returns void
+      language sql security definer
+      as $$ insert into realtime.messages (topic, extension, payload)
+            values (topic, 'broadcast', jsonb_build_object('event', event, 'payload', payload)) $$;
     -- Storage (como no Supabase).
     create schema storage;
     create table storage.buckets (id text primary key, name text not null, public boolean default false,
@@ -224,7 +228,12 @@ t('dados antigos preservados: canais padrao, mensagem no #geral, dono com cargo,
 
 t('conta nova ganha username', () => {
   ok(pg(`insert into auth.users (id, email) values ('${U(90)}', 'Nova.Pessoa@example.com')`));
-  assert.strictEqual(pg(`select username from public.profiles where id = '${U(90)}'`).out, 'nova.pessoa');
+  const user = pg(`select username from public.profiles where id = '${U(90)}'`).out;
+  const nome = pg(`select display_name from public.profiles where id = '${U(90)}'`).out;
+  // Nada do e-mail: quem sabe o e-mail nao acha a pessoa pela busca.
+  assert.match(user, /^fantasma\d{6}$/);
+  assert.match(nome, /^Fantasma \d{4}$/);
+  assert.ok(!user.includes('nova') && !nome.toLowerCase().includes('nova'));
 });
 
 t('RPCs: security definer, search_path vazio, so authenticated executa', () => {
@@ -606,15 +615,29 @@ t('Realtime: topicos privados server:/user:/dm:', () => {
   assert.strictEqual(can(A, `server:${S1}'; drop table x; --`, 'read'), false);
   // Tabelas na publicacao.
   const pub = pg(`select string_agg(tablename, ',' order by tablename) from pg_publication_tables where pubname = 'supabase_realtime'`).out;
-  for (const tb of ['messages', 'message_reactions', 'relationships', 'group_members', 'channels', 'dm_channels']) {
+  for (const tb of ['messages', 'message_reactions', 'channels', 'dm_channels']) {
     assert.ok(pub.split(',').includes(tb), tb);
   }
+  // DELETE no postgres_changes ignora RLS: amizades e membros ficam fora e viram aviso privado.
+  for (const tb of ['relationships', 'group_members']) assert.ok(!pub.split(',').includes(tb), tb);
+  // me:<id>: so o dono le; ninguem escreve pelo cliente.
+  assert.strictEqual(can(C, `me:${C}`, 'write'), false);
+  assert.strictEqual(can(A, `me:${C}`, 'write'), false);
+  const antes = Number(pg(`select count(*) from realtime.messages where topic = 'me:${C}'`).out);
+  ok(as(C, `select public.block_user('${U(39)}')`));
+  ok(as(C, `select public.unblock_user('${U(39)}')`));
+  assert.ok(Number(pg(`select count(*) from realtime.messages where topic = 'me:${C}'`).out) > antes, 'aviso no me:');
+  assert.strictEqual(can(C, `me:${C}`, 'read'), true);
+  assert.strictEqual(can(A, `me:${C}`, 'read'), false);
+  assert.strictEqual(pg(`select payload->>'event' from realtime.messages where topic = 'me:${C}' order by id desc limit 1`).out, 'relationships');
   assert.strictEqual(pg(`select relreplident from pg_class where oid = 'public.messages'::regclass`).out, 'f');
 });
 
 t('Storage: buckets e quem grava/le anexos e avatares', () => {
   assert.strictEqual(pg(`select string_agg(id || ':' || public || ':' || file_size_limit, ',' order by id) from storage.buckets`).out,
     'attachments:false:8388608,avatars:true:2097152');
+  const mimes = pg(`select array_to_string(allowed_mime_types, ',') from storage.buckets where id = 'attachments'`).out;
+  assert.ok(mimes.includes('application/pdf') && !mimes.includes('text/html') && !mimes.includes('svg'), mimes);
   const ch = textChannel(S1);
   const path1 = `g_${S1}/${ch}/${U(71)}/foto.png`;
   ok(as(U(14), `insert into storage.objects (bucket_id, name) values ('attachments', '${path1}')`));
@@ -770,4 +793,54 @@ t('banco sem 0003_social/0004/0005: 0006 cria o necessario e as funcoes antigas 
   assert.ok(sent.ok, sent.err);
   assert.strictEqual(sent.last, 'oi grb');
   assert.ok(asB(U(1), `select public.social_photo('profile', '${PHOTO}')`).ok);
+});
+
+t('seguranca: pedido enviado/bloqueio nao liberam o perfil; relationship_people da so o basico', () => {
+  const [V, X, Y] = [U(95), U(96), U(97)];
+  ok(pg(`insert into auth.users (id, email) values ('${V}', 'vitima@example.com'), ('${X}', 'x@example.com'), ('${Y}', 'y@example.com')`));
+  ok(pg(`update public.profiles set about = 'segredo', discoverable = false where id = '${V}'`));
+  const unV = pg(`select username from public.profiles where id = '${V}'`).out;
+  // Quem bloqueia nao passa a ler o perfil.
+  ok(as(X, `select public.block_user('${V}')`));
+  assert.strictEqual(count(X, 'public.profiles', `id = '${V}'`), 0);
+  // Quem manda pedido (mesmo com discoverable=false) tambem nao.
+  assert.strictEqual(as(Y, `select public.send_friend_request('${unV}')`).last, 'sent');
+  assert.strictEqual(count(Y, 'public.profiles', `id = '${V}'`), 0);
+  // Mas recebe nome/@ basico pela RPC.
+  assert.strictEqual(as(Y, `select username || ':' || kind from public.relationship_people() where id = '${V}'`).last, `${unV}:pending_out`);
+  assert.ok(!as(Y, `select about from public.relationship_people()`).ok, 'sem coluna about');
+  // Quem recebeu o pedido le o perfil de quem mandou.
+  assert.strictEqual(count(V, 'public.profiles', `id = '${Y}'`), 1);
+});
+
+t('seguranca: social_people tem limite de taxa', () => {
+  const Z = U(98);
+  ok(pg(`insert into auth.users (id, email) values ('${Z}', 'z@example.com')`));
+  let last = null;
+  for (let i = 0; i < 31; i += 1) last = as(Z, `select count(*) from public.social_people('fantasma', null)`);
+  assert.ok(!last.ok && /rate_limited/.test(last.err), 'a 31a busca em 1 min e recusada');
+  // Lista sem busca (amigos) nao conta.
+  assert.ok(as(Z, 'select count(*) from public.social_people(null, null)').ok);
+});
+
+t('seguranca: autor nao edita mensagem depois de sair do servidor nem com bloqueio na DM', () => {
+  const [E1, E2] = [U(93), U(94)];
+  ok(pg(`insert into auth.users (id, email) values ('${E1}', 'e1@example.com'), ('${E2}', 'e2@example.com')`));
+  const g = ok(as(E1, `select public.create_group('Edicao', 0)`));
+  const code = ok(as(E1, `select code from public.create_invite('${g}', null, null)`));
+  ok(as(E2, `select public.join_group('${code}')`));
+  const ch = textChannel(g);
+  const mid = ok(as(E2, `insert into public.messages (group_id, channel_id, body) values ('${g}', '${ch}', 'antes') returning id`));
+  ok(as(E2, `update public.messages set body = 'editada' where id = ${mid}`));
+  ok(as(E2, `select public.leave_group('${g}')`));
+  as(E2, `update public.messages set body = 'depois de sair' where id = ${mid}`);
+  assert.strictEqual(pg(`select body from public.messages where id = ${mid}`).out, 'editada');
+  // DM: depois do bloqueio, quem bloqueou/foi bloqueado nao edita.
+  ok(as(E1, `select public.send_friend_request('${pg(`select username from public.profiles where id = '${E2}'`).out}')`));
+  ok(as(E2, `select public.accept_friend_request('${E1}')`));
+  const dm = ok(as(E1, `select public.open_dm('${E2}')`));
+  const dmid = ok(as(E1, `insert into public.messages (dm_id, body) values ('${dm}', 'oi') returning id`));
+  ok(as(E2, `select public.block_user('${E1}')`));
+  as(E1, `update public.messages set body = 'mudou' where id = ${dmid}`);
+  assert.strictEqual(pg(`select body from public.messages where id = ${dmid}`).out, 'oi');
 });

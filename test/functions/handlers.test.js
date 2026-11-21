@@ -190,7 +190,7 @@ for (const variant of ['index.ts', 'bundle.ts']) {
       assert.strictEqual(p.name, 'Ana');
       assert.strictEqual(p.video.room, `grupo-${GROUP}`);
       assert.strictEqual(p.nbf, NOW / 1000 - 60);
-      assert.strictEqual(p.exp, NOW / 1000 + 3600);
+      assert.strictEqual(p.exp, NOW / 1000 + 600);
     });
 
     await t.test('CORS: preflight e respostas liberam a versao web', async () => {

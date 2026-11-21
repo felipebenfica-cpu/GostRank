@@ -161,3 +161,25 @@ test('servidores: convite ilimitado por padrão, opções do Discord, prévia, b
   assert.equal(normalizeTextChannelName('Ação Rápida'), 'ação-rápida');
   assert.equal(normalizeTextChannelName('a/b'), null);
 });
+
+test('social: pedido enviado/bloqueado sem perfil legível usa relationship_people (só o básico)', async () => {
+  const OUTRO = '99999999-9999-4999-8999-999999999999';
+  const { social, rest } = socialEnv({
+    select(p) {
+      if (p.startsWith('/rest/v1/profiles') && p.includes(`id=eq.${ME}`)) return [profile(ME, 'fantasma')];
+      if (p.startsWith('/rest/v1/profiles')) return [profile(LUA, 'lua')]; // RLS esconde OUTRO
+      if (p.startsWith('/rest/v1/relationships')) return [
+        { other_id: LUA, kind: 'friend', created_at: '2026-01-01T00:00:00Z' },
+        { other_id: OUTRO, kind: 'pending_out', created_at: '2026-01-02T00:00:00Z' },
+      ];
+      return [];
+    },
+    rpc(name) {
+      if (name === 'relationship_people') return [{ ...profile(OUTRO, 'outro'), kind: 'pending_out' }, { ...profile(SOL, 'sol'), kind: 'blocked' }];
+      return null;
+    },
+  });
+  await social.refresh();
+  assert.deepEqual(social.getFriendsView().map((f) => [f.username, f.relation]), [['lua', 'friend'], ['outro', 'pending_out']]);
+  assert.equal(rest.calls.filter((c) => c[1] === 'relationship_people').length, 1);
+});

@@ -112,7 +112,8 @@ test('presence: tópicos certos, status efetivo (invisível/ausente), voz e quem
   const p = createPresenceService({ realtime: rt, getIdleSeconds: () => idleSecs, timers, onTyping: (t) => typing.push(t) });
   p.setMe(ME);
   p.sync({ serverIds: [G1], friendIds: [LUA], dmIds: [DM1] });
-  assert.deepEqual([...rt.chans.keys()].sort(), [`dm:${DM1}`, `server:${G1}`, `user:${LUA}`, `user:${ME}`].sort());
+  assert.deepEqual([...rt.chans.keys()].sort(), [`dm:${DM1}`, `me:${ME}`, `server:${G1}`, `user:${LUA}`, `user:${ME}`].sort());
+  assert.equal(rt.chans.get(`me:${ME}`).opts.private, true);
   assert.equal(rt.chans.get(`server:${G1}`).opts.private, true);
   assert.deepEqual(rt.chans.get(`user:${ME}`).tracked, { status: 'online' });
   assert.equal(rt.chans.get(`dm:${DM1}`).tracked, null);
@@ -153,6 +154,42 @@ test('presence: tópicos certos, status efetivo (invisível/ausente), voz e quem
   // saiu do servidor: tópico fecha
   p.sync({ serverIds: [], friendIds: [LUA], dmIds: [] });
   assert.equal(rt.chans.has(`server:${G1}`), false);
+  p.clear();
+  assert.equal(rt.chans.size, 0);
+});
+
+test('presence: não confia em userId declarado, só em membros; avisos privados me:/members', () => {
+  const rt = fakeRealtime();
+  const typing = [];
+  const events = [];
+  const members = { [G1]: [ME, SOL] }; // LUA não é membro de G1
+  const p = createPresenceService({
+    realtime: rt, timers: manualTimers(), onTyping: (t) => typing.push(t), onPrivateEvent: (e) => events.push(e),
+    isMember: (kind, id, uid) => (kind === 'server' ? (members[id] || []).includes(uid) : uid === LUA || uid === ME),
+  });
+  p.setMe(ME);
+  p.sync({ serverIds: [G1], friendIds: [], dmIds: [DM1] });
+  const srv = rt.chans.get(`server:${G1}`);
+  srv.presence = {
+    [SOL]: [{ status: 'online', voice: V1, userId: LUA }], // declara ser outra pessoa → descartado
+    [LUA]: [{ status: 'online', voice: V1 }], // não é membro → ignorado
+  };
+  assert.equal(p.getPresence()[SOL], undefined);
+  assert.equal(p.getPresence()[LUA], undefined);
+  assert.deepEqual(p.getVoiceStates(), {});
+  // digitando: não membro, alvo de outro tópico e userId inválido são ignorados
+  srv.fire('broadcast', { event: 'typing', payload: { target: `c:${V1}`, userId: LUA } });
+  srv.fire('broadcast', { event: 'typing', payload: { target: `d:${DM1}`, userId: SOL } });
+  srv.fire('broadcast', { event: 'typing', payload: { target: `c:${V1}`, userId: 'x' } });
+  rt.chans.get(`dm:${DM1}`).fire('broadcast', { event: 'typing', payload: { target: `d:${G1}`, userId: LUA } });
+  assert.deepEqual(typing, []);
+  srv.fire('broadcast', { event: 'typing', payload: { target: `c:${V1}`, userId: SOL.toUpperCase() } });
+  assert.deepEqual(typing, [{ target: `c:${V1}`, userId: SOL }]);
+  // avisos privados
+  rt.chans.get(`me:${ME}`).fire('broadcast', { event: 'relationships', payload: {} });
+  rt.chans.get(`me:${ME}`).fire('broadcast', { event: 'servers', payload: { group_id: G1 } });
+  srv.fire('broadcast', { event: 'members', payload: {} });
+  assert.deepEqual(events, [{ kind: 'relationships' }, { kind: 'servers', serverId: G1 }, { kind: 'members', serverId: G1 }]);
   p.clear();
   assert.equal(rt.chans.size, 0);
 });

@@ -140,13 +140,43 @@ end;
 $$;
 revoke all on function public.make_username(text) from public, anon, authenticated;
 
--- Preenche quem ja existe.
+-- Nome de usuario aleatorio (nunca derivado do e-mail): base + 4..6 digitos, sem colisao.
+create or replace function public.make_suffixed_username(p_base text, p_digits int default 4)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  base text := left(regexp_replace(lower(coalesce(p_base, '')), '[^a-z0-9_.]', '', 'g'), 24);
+  n int := least(greatest(coalesce(p_digits, 4), 4), 6);
+  candidato text;
+  tentativa int := 0;
+begin
+  if char_length(base) < 2 then
+    base := 'fantasma';
+  end if;
+  loop
+    tentativa := tentativa + 1;
+    candidato := base || lpad(floor(random() * power(10, n))::bigint::text, n, '0');
+    if tentativa > 30 then
+      candidato := left(base || replace(gen_random_uuid()::text, '-', ''), 32);
+    end if;
+    exit when not exists (select 1 from public.profiles p where p.username = candidato);
+  end loop;
+  return candidato;
+end;
+$$;
+revoke all on function public.make_suffixed_username(text, int) from public, anon, authenticated;
+
+-- Preenche quem ja existe. O apelido das contas antigas pode ter vindo do e-mail (0001), entao o nome de
+-- usuario sempre ganha um sufixo numerico para nao ser igual a parte do e-mail antes do @.
 do $$
 declare
   r record;
 begin
   for r in select p.id, p.display_name from public.profiles p where p.username is null order by p.created_at, p.id loop
-    update public.profiles set username = public.make_username(r.display_name) where id = r.id;
+    update public.profiles set username = public.make_suffixed_username(r.display_name, 4) where id = r.id;
   end loop;
 end;
 $$;
@@ -191,18 +221,12 @@ security definer
 set search_path = ''
 as $$
 declare
-  nome text;
+  usuario text;
 begin
-  nome := left(
-    regexp_replace(split_part(coalesce(new.email, ''), '@', 1), '[<>[:cntrl:]]', '', 'g'),
-    32
-  );
-  if char_length(nome) < 2 then
-    nome := 'jogador';
-  end if;
-
+  -- Nada vem do e-mail: quem souber o e-mail nao acha a pessoa pela busca.
+  usuario := public.make_suffixed_username('fantasma', 6);
   insert into public.profiles (id, display_name, username)
-  values (new.id, nome, public.make_username(nome))
+  values (new.id, 'Fantasma ' || right(usuario, 4), usuario)
   on conflict (id) do nothing;
 
   return new;
@@ -496,8 +520,9 @@ as $$
 $$;
 revoke all on function public.are_friends(uuid, uuid) from public, anon, authenticated;
 
--- Quem pode ver o perfil de p_user: o proprio, quem tem relacao registrada com ele (amigo, pedido,
--- bloqueio feito por voce), quem divide servidor e quem tem DM com ele.
+-- Quem pode ver o perfil completo de p_user: o proprio, amigos, quem recebeu pedido dele, quem divide
+-- servidor e quem tem DM com ele. Mandar pedido ou bloquear NAO libera o perfil (so os dados basicos de
+-- relationship_people/search_users).
 create or replace function public.can_see_user(p_user uuid)
 returns boolean
 language sql
@@ -506,7 +531,8 @@ security definer
 set search_path = ''
 as $$
   select p_user = auth.uid()
-    or exists (select 1 from public.relationships r where r.user_id = auth.uid() and r.other_id = p_user)
+    or exists (select 1 from public.relationships r
+               where r.user_id = auth.uid() and r.other_id = p_user and r.kind in ('friend', 'pending_in'))
     or public.shares_server(auth.uid(), p_user)
     or exists (
       select 1 from public.dm_channels d
@@ -725,13 +751,34 @@ create policy "messages_insert_membro"
     )
   );
 
+-- Pode escrever/editar ali agora: membro do servidor (canal) ou participante da DM sem bloqueio entre os dois.
+create or replace function public.can_post_where(p_group uuid, p_channel uuid, p_dm uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select case
+    when p_channel is not null then public.is_member(p_group)
+    when p_dm is not null then exists (
+      select 1 from public.dm_channels d
+      where d.id = p_dm and auth.uid() in (d.user_a, d.user_b)
+        and not public.is_blocked_between(d.user_a, d.user_b)
+    )
+    else false
+  end;
+$$;
+revoke all on function public.can_post_where(uuid, uuid, uuid) from public, anon, authenticated;
+grant execute on function public.can_post_where(uuid, uuid, uuid) to authenticated;
+
 drop policy if exists "messages_update_autor" on public.messages;
 create policy "messages_update_autor"
   on public.messages
   for update
   to authenticated
-  using (user_id = auth.uid())
-  with check (user_id = auth.uid());
+  using (user_id = auth.uid() and public.can_post_where(group_id, channel_id, dm_id))
+  with check (user_id = auth.uid() and public.can_post_where(group_id, channel_id, dm_id));
 
 drop policy if exists "messages_delete_proprio" on public.messages;
 drop policy if exists "messages_delete_autor_ou_admin" on public.messages;
@@ -977,6 +1024,23 @@ begin
     order by (p.username = q) desc, char_length(p.username), p.username
     limit 20;
 end;
+$$;
+
+-- Dados basicos (nome, @, cor, foto) de quem esta na sua lista de relacoes, inclusive pedidos enviados e
+-- bloqueados, sem liberar o perfil completo.
+create or replace function public.relationship_people()
+returns table (id uuid, username text, display_name text, avatar_color smallint, avatar_path text, photo text, kind text)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select p.id, p.username, p.display_name, p.avatar_color, p.avatar_path, p.photo, r.kind
+  from public.relationships r
+  join public.profiles p on p.id = r.other_id
+  where r.user_id = auth.uid()
+  order by r.created_at desc
+  limit 1000;
 $$;
 
 create or replace function public.send_friend_request(p_username text)
@@ -2183,7 +2247,17 @@ $$;
 
 create or replace function public.social_people(p_query text default null, p_after uuid default null)
 returns table(id uuid, name text, photo text, state text, discoverable boolean)
-language sql stable security definer set search_path = '' as $$
+language plpgsql volatile security definer set search_path = '' as $$
+#variable_conflict use_column
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated' using errcode = '28000';
+  end if;
+  -- Mesmo limite da busca nova: sem isso, a paginacao por p_after listaria todos os perfis.
+  if p_query is not null then
+    perform public.rate_check('search', 30, 60);
+  end if;
+  return query
   with me as (select auth.uid() as uid),
   mine as (
     select r.other_id as other,
@@ -2206,6 +2280,7 @@ language sql stable security definer set search_path = '' as $$
                or strpos(p.username, lower(btrim(p_query))) > 0)))
   order by case when p_query is not null then lower(p.display_name) = lower(btrim(p_query)) end desc,
     p.id limit 12;
+end;
 $$;
 
 create or replace function public.social_friend(p_action text, p_target uuid)
@@ -2373,7 +2448,7 @@ declare
     'public.is_member(uuid)', 'public.member_role(uuid)', 'public.my_group_id()',
     'public.is_dm_participant(uuid)', 'public.can_see_user(uuid)', 'public.can_see_mmr(uuid)', 'public.can_watch_presence(uuid)',
     'public.can_read_message(bigint)',
-    'public.search_users(text)', 'public.send_friend_request(text)', 'public.accept_friend_request(uuid)',
+    'public.search_users(text)', 'public.relationship_people()', 'public.send_friend_request(text)', 'public.accept_friend_request(uuid)',
     'public.decline_friend_request(uuid)', 'public.remove_friend(uuid)', 'public.block_user(uuid)',
     'public.unblock_user(uuid)', 'public.open_dm(uuid)',
     'public.create_group(text, integer)', 'public.preview_invite(text)', 'public.join_group(text)',
@@ -2405,15 +2480,25 @@ $$;
 -- ===========================================================================
 alter table public.messages replica identity full;
 alter table public.message_reactions replica identity full;
-alter table public.relationships replica identity full;
-alter table public.group_members replica identity full;
+-- relationships e group_members NAO entram na publicacao: no DELETE o Realtime entrega a chave sem aplicar
+-- RLS, o que vazaria quem desfez amizade/saiu de qual servidor. As mudancas viram avisos em topicos privados.
+alter table public.relationships replica identity default;
+alter table public.group_members replica identity default;
 
 do $$
 declare
   t text;
 begin
   if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
-    foreach t in array array['messages', 'message_reactions', 'relationships', 'group_members', 'channels',
+    foreach t in array array['relationships', 'group_members'] loop
+      if exists (
+        select 1 from pg_publication_tables pt
+        where pt.pubname = 'supabase_realtime' and pt.schemaname = 'public' and pt.tablename = t
+      ) then
+        execute format('alter publication supabase_realtime drop table public.%I', t);
+      end if;
+    end loop;
+    foreach t in array array['messages', 'message_reactions', 'channels',
       'channel_categories', 'dm_channels', 'groups'] loop
       if not exists (
         select 1 from pg_publication_tables pt
@@ -2446,6 +2531,9 @@ begin
     return public.can_watch_presence(substr(p_topic, 6)::uuid);
   elsif p_topic ~ ('^dm:' || uuid_re || '$') then
     return public.is_dm_participant(substr(p_topic, 4)::uuid);
+  elsif p_topic ~ ('^me:' || uuid_re || '$') then
+    -- Avisos privados (amizades, servidores): so a propria pessoa ouve.
+    return substr(p_topic, 4)::uuid = auth.uid();
   end if;
   return false;
 end;
@@ -2468,6 +2556,9 @@ begin
   if p_topic ~ ('^user:' || uuid_re || '$') then
     -- So o dono do topico anuncia o proprio status.
     return substr(p_topic, 6)::uuid = auth.uid();
+  elsif p_topic like 'me:%' then
+    -- So o banco (gatilhos) escreve nos avisos privados.
+    return false;
   end if;
   return public.realtime_can_read(p_topic);
 end;
@@ -2490,6 +2581,65 @@ begin
   end if;
 end;
 $$;
+
+-- Avisos de mudanca em amizades e membros, so nos topicos privados de quem tem direito de saber.
+-- Sem realtime.send (Supabase antigo/teste) nada acontece; um erro aqui nunca impede a escrita.
+create or replace function public.gr_notify(p_topic text, p_event text, p_payload jsonb)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if to_regprocedure('realtime.send(jsonb,text,text,boolean)') is not null then
+    execute 'select realtime.send($1, $2, $3, true)' using coalesce(p_payload, '{}'::jsonb), p_event, p_topic;
+  end if;
+exception when others then
+  null;
+end;
+$$;
+revoke all on function public.gr_notify(text, text, jsonb) from public, anon, authenticated;
+
+create or replace function public.relationships_notify()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  r record := coalesce(new, old);
+begin
+  perform public.gr_notify('me:' || r.user_id::text, 'relationships', '{}'::jsonb);
+  return null;
+end;
+$$;
+revoke all on function public.relationships_notify() from public, anon, authenticated;
+
+drop trigger if exists relationships_notify on public.relationships;
+create trigger relationships_notify
+  after insert or update or delete on public.relationships
+  for each row execute function public.relationships_notify();
+
+create or replace function public.group_members_notify()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  r record := coalesce(new, old);
+begin
+  perform public.gr_notify('me:' || r.user_id::text, 'servers', jsonb_build_object('group_id', r.group_id));
+  perform public.gr_notify('server:' || r.group_id::text, 'members', '{}'::jsonb);
+  return null;
+end;
+$$;
+revoke all on function public.group_members_notify() from public, anon, authenticated;
+
+drop trigger if exists group_members_notify on public.group_members;
+create trigger group_members_notify
+  after insert or update or delete on public.group_members
+  for each row execute function public.group_members_notify();
 
 -- ===========================================================================
 -- 17. Storage: avatares (publico) e anexos (privado)
@@ -2566,9 +2716,14 @@ begin
   values ('avatars', 'avatars', true, 2097152, array['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
   on conflict (id) do update set public = true, file_size_limit = excluded.file_size_limit,
     allowed_mime_types = excluded.allowed_mime_types;
-  insert into storage.buckets (id, name, public, file_size_limit)
-  values ('attachments', 'attachments', false, 8388608)
-  on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit;
+  -- Mesma lista de src/main/files.js: nada de text/html ou svg pela API direta.
+  insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  values ('attachments', 'attachments', false, 8388608, array[
+    'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'text/plain', 'application/pdf', 'application/zip',
+    'application/x-zip-compressed', 'audio/mpeg', 'audio/ogg', 'audio/wav', 'video/mp4', 'video/webm',
+    'application/json', 'text/csv', 'application/octet-stream'])
+  on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;
 
   -- Coluna do dono do arquivo (owner_id nas versoes novas do Storage; owner nas antigas).
   if exists (select 1 from information_schema.columns

@@ -115,19 +115,25 @@ test('politicas: sempre com drop antes, so authenticated, sem my_group_id', () =
 
 test('Realtime: publicacao, replica identity e topicos privados', () => {
   assert.match(code, /alter publication supabase_realtime add table public\.%i/);
-  for (const t of ['messages', 'message_reactions', 'relationships', 'group_members', 'channels', 'channel_categories', 'dm_channels', 'groups']) {
+  for (const t of ['messages', 'message_reactions', 'channels', 'channel_categories', 'dm_channels', 'groups']) {
     assert.ok(code.includes(`'${t}'`), t);
   }
   assert.match(code, /alter table public\.messages replica identity full/);
   assert.match(code, /alter table public\.message_reactions replica identity full/);
   assert.match(code, /realtime_can_read\(realtime\.topic\(\)\)/);
   assert.match(code, /realtime_can_write\(realtime\.topic\(\)\)/);
-  for (const prefix of ['server:', 'user:', 'dm:']) assert.ok(fn('realtime_can_read').includes(`'^${prefix}'`), prefix);
+  for (const prefix of ['server:', 'user:', 'dm:', 'me:']) assert.ok(fn('realtime_can_read').includes(`'^${prefix}'`), prefix);
+  // relationships e group_members saem da publicacao (DELETE vazaria a chave sem RLS) e viram avisos privados.
+  assert.match(code, /alter publication supabase_realtime drop table public\.%i/);
+  assert.match(fn('relationships_notify'), /'me:' \|\| r\.user_id/);
+  assert.match(fn('group_members_notify'), /'server:' \|\| r\.group_id/);
+  assert.match(fn('realtime_can_write'), /like 'me:%'[\s\S]*?return false/);
 });
 
 test('Storage: avatares publicos 2 MB, anexos privados 8 MB, caminhos validados', () => {
   assert.match(code, /values \('avatars', 'avatars', true, 2097152/);
-  assert.match(code, /values \('attachments', 'attachments', false, 8388608\)/);
+  assert.match(code, /values \('attachments', 'attachments', false, 8388608, array\[/);
+  assert.doesNotMatch(code.slice(code.indexOf("values ('attachments'"), code.indexOf("values ('attachments'") + 600), /text\/html|svg/);
   assert.match(code, /public\.can_use_attachment_path\(name\)/);
   assert.match(code, /public\.can_write_avatar_path\(name\)/);
   assert.match(fn('can_use_attachment_path'), /\\\.\\\./, 'recusa ..');
@@ -136,5 +142,18 @@ test('Storage: avatares publicos 2 MB, anexos privados 8 MB, caminhos validados'
 test('limites de taxa', () => {
   assert.match(fn('search_users'), /rate_check\('search', 30, 60\)/);
   assert.match(fn('send_friend_request'), /rate_check\('friend_request', 20, 3600\)/);
+  assert.match(fn('social_people'), /rate_check\('search', 30, 60\)/);
   assert.match(fn('rate_check'), /pg_advisory_xact_lock/);
+});
+
+test('perfil: pedido enviado ou bloqueio nao liberam o perfil; username nao vem do e-mail', () => {
+  assert.match(fn('can_see_user'), /r\.kind in \('friend', 'pending_in'\)/);
+  assert.doesNotMatch(fn('handle_new_user'), /new\.email/);
+  assert.match(fn('relationship_people'), /r\.user_id = auth\.uid\(\)/);
+});
+
+test('edicao de mensagem exige continuar no servidor/DM sem bloqueio', () => {
+  const i = code.indexOf('create policy "messages_update_autor"');
+  assert.match(code.slice(i, i + 400), /can_post_where\(group_id, channel_id, dm_id\)/);
+  assert.match(fn('can_post_where'), /is_blocked_between/);
 });

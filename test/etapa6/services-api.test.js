@@ -152,6 +152,14 @@ test('services v3: mensagem pelo tempo real com janela sem foco vira notificaç�
   const dbJoin = ws.sent.find((m) => m.topic === `realtime:db:${ME}`);
   assert.ok(dbJoin.payload.config.postgres_changes.some((p) => p.table === 'messages'));
   assert.ok(ws.sent.some((m) => m.topic === `realtime:server:${G1}` && m.payload.config.private === true));
+  // Amizades e membros não vão pelo postgres_changes (DELETE vaza sem RLS): chegam como aviso em me:<eu>.
+  const tables = dbJoin.payload.config.postgres_changes.map((p) => p.table);
+  assert.ok(!tables.includes('relationships') && !tables.includes('group_members'));
+  assert.ok(ws.sent.some((m) => m.topic === `realtime:me:${ME}` && m.payload.config.private === true));
+  const before = e.log.filter((l) => String(l[1]).includes('/rest/v1/relationships')).length;
+  ws.server({ topic: `realtime:me:${ME}`, event: 'broadcast', payload: { event: 'relationships', payload: {} } });
+  for (let i = 0; i < 3; i++) { e.timers.runTimeouts(); await flush(); }
+  for (let i = 0; i < 10; i++) await flush();
   e.setFocused(false);
   ws.server({ topic: `realtime:db:${ME}`, event: 'postgres_changes', payload: { data: { type: 'INSERT', table: 'messages', record: { id: 9, user_id: LUA, body: `ei <@${ME}>`, created_at: '2026-01-01T00:00:00Z', attachments: [], mentions: [ME], channel_id: C1, group_id: G1 } } } });
   for (let i = 0; i < 10; i++) await flush();
@@ -165,6 +173,7 @@ test('services v3: mensagem pelo tempo real com janela sem foco vira notificaç�
   assert.equal(e.notes.length, 1);
   // badge: menções não silenciadas + pedidos
   assert.ok(e.svc.badgeCount() >= 1);
+  assert.ok(e.log.filter((l) => String(l[1]).includes('/rest/v1/relationships')).length > before, 'recarregou amizades');
   e.svc.stop();
 });
 
