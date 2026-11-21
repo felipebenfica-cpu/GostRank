@@ -13,6 +13,7 @@ const { loadConfig } = require('./config');
 const { normalizeSupabaseUrl } = require('./supabase-url');
 const { safeErrorCode } = require('./group');
 const { createAppServices } = require('./services');
+const { createUpdater } = require('./updater');
 
 app.enableSandbox();
 protocol.registerScheme();
@@ -36,6 +37,7 @@ let picker = null;
 let groupTimer = null;
 let steamLinkPending = false;
 let lastGroupRefreshAt = 0;
+let updater = null;
 
 const GROUP_REFRESH_MS = 60000;
 const GROUP_FOCUS_MIN_MS = 30000;
@@ -107,6 +109,21 @@ if (!app.requestSingleInstanceLock()) {
     picker = security.createScreenPicker({ desktopCapturer });
     protocol.registerHandler(RENDERER_DIR, { imageOrigin: config ? normalizeSupabaseUrl(config.supabaseUrl) : null });
 
+    // Atualização automática: instalado = baixa e instala sozinho; portátil = avisa e manda baixar o instalador.
+    const updateMode = !app.isPackaged ? 'off' : (process.env.PORTABLE_EXECUTABLE_DIR ? 'portable' : 'installed');
+    let autoUpdater = null;
+    if (updateMode === 'installed') {
+      try { ({ autoUpdater } = require('electron-updater')); } catch { autoUpdater = null; }
+    }
+    updater = createUpdater({
+      autoUpdater,
+      mode: updateMode === 'installed' && !autoUpdater ? 'off' : updateMode,
+      currentVersion: app.getVersion(),
+      fetchImpl: (...a) => fetch(...a),
+      openExternal: (url) => shell.openExternal(url),
+      onChange: () => pushUpdate(),
+    });
+
     const livekitVendor = protocol.vendorExists();
     controller = createController({
       client,
@@ -116,7 +133,7 @@ if (!app.requestSingleInstanceLock()) {
       getChatView: () => (chatFeed ? chatFeed.getView() : null),
       getVoiceView: () => ({ available: Boolean(livekitVendor && services.voiceAvailable()) }),
       publishSnapshot: (summary) => group.publishSnapshot(summary),
-      getExtraView: () => services.getExtraView(),
+      getExtraView: () => ({ ...services.getExtraView(), update: updater ? updater.getView() : null }),
       onUpdate: (view) => {
         if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
           mainWindow.webContents.send('gr:update', view);
@@ -131,13 +148,14 @@ if (!app.requestSingleInstanceLock()) {
     } : null;
     unregisterIpc = registerIpc(controller, {
       account, session, group, chatFeed, voice, picker, steam: steamService,
-      app: services.available ? services.app : null, getMode: () => services.getMode(),
+      app: services.available ? services.app : null, getMode: () => services.getMode(), updater,
     });
 
     createWindow();
     controller.start();
     account.refreshProfile().catch(() => {});
     services.start();
+    updater.start();
     refreshGroup(true);
     groupTimer = setInterval(() => {
       if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()) refreshGroup(true);

@@ -1,6 +1,6 @@
 {
   "name": "ghost-rank",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "LUMENEX: MMR de Dota 2, servidores, chat e voz",
   "private": true,
   "main": "src/main/main.js",
@@ -8,12 +8,13 @@
     "start": "electron .",
     "test": "node --test \"test/**/*.test.js\"",
     "audit": "npm audit --audit-level=high",
-    "dist": "electron-builder --win portable --publish never"
+    "dist": "electron-builder --win nsis portable --publish never"
   },
   "engines": {
     "node": ">=22"
   },
   "dependencies": {
+    "electron-updater": "^6.8.11",
     "livekit-client": "^2.15.0"
   },
   "devDependencies": {
@@ -32,14 +33,33 @@
     "asar": true,
     "win": {
       "target": [
+        "nsis",
         "portable"
       ],
-      "artifactName": "GhostRank-${version}.exe",
       "icon": "build/icon.png"
     },
     "directories": {
       "output": "dist",
       "buildResources": "build"
-    }
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "LUMENEX-Setup-${version}.exe",
+      "shortcutName": "LUMENEX",
+      "uninstallDisplayName": "LUMENEX",
+      "deleteAppDataOnUninstall": false
+    },
+    "portable": {
+      "artifactName": "GhostRank-${version}.exe"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "felipebenfica-cpu",
+        "repo": "GostRank",
+        "releaseType": "release"
+      }
+    ]
   }
 }

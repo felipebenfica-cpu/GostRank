@@ -105,6 +105,9 @@ contextBridge.exposeInMainWorld('ghostRank', {
   pickScreenSource: (sourceId) => inv('gr:voice:pickSource', { sourceId }),
   // Steam
   linkSteam: () => inv('gr:steam:link', {}),
+  // Atualização do app (.exe)
+  checkForUpdate: () => inv('gr:appUpdate:check', {}),
+  installUpdate: () => inv('gr:appUpdate:install', {}),
   // Eventos
   onUpdate: (cb) => listen('gr:update', cb),
   onNotificationClick: (cb) => listen('gr:notificationClick', cb),

@@ -451,7 +451,9 @@ test('marca: janela e produto LUMENEX, pasta de dados e nome do .exe antigos pre
   assert.equal(pkg.build.productName, 'LUMENEX');
   assert.equal(pkg.name, 'ghost-rank');
   assert.equal(pkg.build.appId, 'com.ghostrank.app');
-  assert.equal(pkg.build.win.artifactName, 'GhostRank-${version}.exe');
+  assert.equal(pkg.build.portable.artifactName, 'GhostRank-${version}.exe');
+  assert.equal(pkg.build.nsis.artifactName, 'LUMENEX-Setup-${version}.exe');
+  assert.ok(pkg.build.win.target.includes('nsis') && pkg.build.win.target.includes('portable'));
   const icon = fs.readFileSync(path.join(ROOT, 'build/icon.png'));
   assert.equal(icon.readUInt32BE(16), 512);
   for (const f of ['main.js', 'chat.js', 'group.js', 'rest.js', 'services.js']) {

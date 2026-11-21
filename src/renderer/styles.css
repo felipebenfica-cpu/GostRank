@@ -2215,3 +2215,17 @@ img.lx-mark { display: block; border-radius: 50%; object-fit: cover; }
 .rail-home { overflow: hidden; padding: 0; }
 .brand-emblem { display: block; margin: 0 auto 12px; border-radius: 50%; filter: drop-shadow(0 6px 24px rgba(212, 167, 44, 0.25)); }
 .setup-card .brand-emblem { margin-bottom: 16px; }
+
+/* Barra de atualização do app (.exe) */
+.update-bar {
+  position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 60;
+  display: flex; align-items: center; gap: 12px; max-width: min(640px, calc(100vw - 24px));
+  padding: 8px 8px 8px 16px; border-radius: 999px;
+  background: var(--surface-3, #1e1f22); color: var(--text, #f2f3f5);
+  border: 1px solid var(--accent, #d4a72c); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  font-size: 14px;
+}
+.update-bar[hidden] { display: none; }
+.update-bar[data-status="downloading"] { padding-right: 16px; border-color: var(--border, #3f4147); }
+.update-text { min-width: 0; }
+.update-btn { flex: none; border-radius: 999px; padding: 6px 14px; }

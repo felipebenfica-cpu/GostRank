@@ -28,6 +28,8 @@ const CHANNELS = Object.freeze({
   voiceListSources: 'gr:voice:listSources',
   voicePickSource: 'gr:voice:pickSource',
   steamLink: 'gr:steam:link',
+  appUpdateCheck: 'gr:appUpdate:check',
+  appUpdateInstall: 'gr:appUpdate:install',
   // Etapa 6: ações novas (tabela em api.js)
   ...Object.fromEntries(API.map((e) => [e.method, e.channel])),
 });
@@ -229,7 +231,7 @@ function wrapHandler(validate, action, { raw = false } = {}) {
 
 function buildHandlers(controller, {
   account = null, session = null, group = null, chatFeed = null, voice = null, picker = null, steam = null,
-  app = null, getMode = () => null,
+  app = null, getMode = () => null, updater = null,
 } = {}) {
   const viaAccount = (fn) => async (d) => {
     if (!account || !account.available) throw new UserInputError(UNAVAILABLE_ERROR);
@@ -311,6 +313,15 @@ function buildHandlers(controller, {
       needSignedIn();
       if (!steam) throw new UserInputError(UNAVAILABLE_ERROR);
       await steam.startLink();
+      return {};
+    }, { raw: true }),
+    [CHANNELS.appUpdateCheck]: wrapHandler(validateNoArgsPayload, async () => {
+      if (!updater) return {};
+      await updater.check();
+      return controller.getView();
+    }),
+    [CHANNELS.appUpdateInstall]: wrapHandler(validateNoArgsPayload, async () => {
+      if (!updater || !updater.install()) throw new UserInputError('Nenhuma atualização pronta para instalar.');
       return {};
     }, { raw: true }),
     ...buildApiHandlers(controller, app),

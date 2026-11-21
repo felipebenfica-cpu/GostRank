@@ -30,7 +30,7 @@ test('preload expõe exatamente os métodos esperados e nada de ipcRenderer', ()
   const { exposed } = loadPreload();
   assert.deepEqual(Object.keys(exposed), ['ghostRank']);
   assert.deepEqual(Object.keys(exposed.ghostRank).sort(), [
-    'acceptFriend', 'banMember', 'blockUser', 'correctMmr', 'createCategory', 'createChannel', 'createGroup',
+    'acceptFriend', 'banMember', 'blockUser', 'checkForUpdate', 'installUpdate', 'correctMmr', 'createCategory', 'createChannel', 'createGroup',
     'createInvite', 'createServer', 'declineFriend', 'deleteAccount', 'deleteCategory', 'deleteChannel',
     'deleteMessage', 'deleteServer', 'editMessage', 'getView', 'joinGroup', 'joinServer', 'kickMember',
     'leaveGroup', 'leaveServer', 'linkSteam', 'listBans', 'listInvites', 'listPinned', 'listScreenSources',

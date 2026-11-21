@@ -505,6 +505,14 @@
   if (scenario === 'no_group') { servers = []; dms = []; }
 
   var uploads = { avatar: null, banner: null }; // Etapa 7: progresso de envio de avatar/banner
+  // Atualização do .exe (prévia: ?update=ready|downloading|available)
+  var updateState = (function () {
+    var u = params.get('update');
+    if (u === 'ready') return { mode: 'installed', current: '0.2.40', status: 'ready', version: '0.2.41', progress: 1, error: null };
+    if (u === 'downloading') return { mode: 'installed', current: '0.2.40', status: 'downloading', version: '0.2.41', progress: 0.42, error: null };
+    if (u === 'available') return { mode: 'portable', current: '0.2.40', status: 'available', version: '0.2.41', progress: 0, error: null };
+    return null;
+  })();
   var voiceMove = null; // Etapa 7: { nonce, serverId, channelId, by } — um ADM te moveu de canal de voz
   var typing = {}; // alvo -> { userId: até }
   var pagesLoaded = {}; // alvo -> quantas mensagens antigas extras já foram "carregadas"
@@ -723,6 +731,7 @@
     v.prefs = JSON.parse(JSON.stringify(prefs));
     v.uploads = JSON.parse(JSON.stringify(uploads));
     v.voiceMove = voiceMove ? JSON.parse(JSON.stringify(voiceMove)) : null;
+    v.update = updateState ? JSON.parse(JSON.stringify(updateState)) : null;
   }
 
   // Campos antigos (group/chat) a partir do servidor/canal selecionado
@@ -1828,6 +1837,18 @@
         if (!found) return fail('Essa tela não está mais disponível. Escolha de novo.');
         return { ok: true };
       }, 150);
+    },
+
+    checkForUpdate: function () {
+      return delay(function () { return { ok: true, view: getView() }; }, 300);
+    },
+    installUpdate: function () {
+      return delay(function () {
+        if (!updateState || (updateState.status !== 'ready' && updateState.status !== 'available')) return fail('Nenhuma atualização pronta para instalar.');
+        updateState = null;
+        emit();
+        return { ok: true };
+      }, 300);
     },
 
     linkSteam: function () {

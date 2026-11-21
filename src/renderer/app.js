@@ -173,10 +173,46 @@
 
     if (configured && view.summary) renderDashboard();
     renderAccount();
+    renderUpdate();
     if (window.GhostShell) {
       try { window.GhostShell.render(view); } catch (e) { console.error('[tela] casca:', e && e.name); }
     }
     updateTimers();
+  }
+
+  // Atualização do .exe: instalado baixa sozinho e pede para reiniciar; portátil manda baixar o instalador.
+  var updateBar = document.getElementById('update-bar');
+  var updateText = document.getElementById('update-text');
+  var updateBtn = document.getElementById('update-btn');
+  if (updateBtn) {
+    updateBtn.addEventListener('click', function () {
+      if (!bridge || typeof bridge.installUpdate !== 'function') return;
+      updateBtn.disabled = true;
+      bridge.installUpdate().then(function (r) {
+        updateBtn.disabled = false;
+        if (r && !r.ok && window.GhostUI && window.GhostUI.toast) window.GhostUI.toast(r.error || 'Não deu para atualizar agora.');
+      });
+    });
+  }
+  function renderUpdate() {
+    if (!updateBar) return;
+    var u = view && view.update;
+    var text = '';
+    var btn = '';
+    if (u && u.status === 'ready') {
+      text = 'Nova versão do LUMENEX' + (u.version ? ' (' + u.version + ')' : '') + ' pronta.';
+      btn = 'Reiniciar e atualizar';
+    } else if (u && u.status === 'downloading') {
+      text = 'Baixando atualização' + (u.version ? ' ' + u.version : '') + '… ' + Math.round((u.progress || 0) * 100) + '%';
+    } else if (u && u.status === 'available') {
+      text = 'Nova versão do LUMENEX' + (u.version ? ' (' + u.version + ')' : '') + ' disponível. Instale uma vez e as próximas chegam sozinhas.';
+      btn = 'Baixar o instalador';
+    }
+    updateBar.hidden = !text;
+    updateBar.setAttribute('data-status', u ? u.status : '');
+    if (updateText.textContent !== text) updateText.textContent = text;
+    updateBtn.hidden = !btn;
+    if (btn && updateBtn.textContent !== btn) updateBtn.textContent = btn;
   }
 
   function renderDashboard() {
