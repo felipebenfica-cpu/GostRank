@@ -129,11 +129,12 @@ function createAuthClient({ fetchImpl, supabaseUrl, anonKey, now = () => Date.no
     };
   }
 
-  function mapTokenFailure(status, data) {
+  function mapTokenFailure(data, refreshing = false) {
     const code = errorCodeOf(data);
     if (code === 'email_not_confirmed') return new AuthError('email_not_confirmed');
     if (code === 'weak_password') return new AuthError('weak_password');
-    if (status === 400 || status === 401 || status === 403 || status === 422) {
+    if (code === 'invalid_credentials' || code === 'invalid_grant'
+        || (refreshing && ['refresh_token_not_found', 'refresh_token_already_used', 'session_not_found', 'session_expired'].includes(code))) {
       return new AuthError('invalid_credentials');
     }
     return new AuthError('bad_response');
@@ -154,7 +155,7 @@ function createAuthClient({ fetchImpl, supabaseUrl, anonKey, now = () => Date.no
       method: 'POST', body: { email, password },
     });
     if (status === 200) return toSession(data);
-    throw mapTokenFailure(status, data);
+    throw mapTokenFailure(data);
   }
 
   async function refresh(refreshToken) {
@@ -163,7 +164,7 @@ function createAuthClient({ fetchImpl, supabaseUrl, anonKey, now = () => Date.no
       method: 'POST', body: { refresh_token: refreshToken },
     });
     if (status === 200) return toSession(data);
-    throw mapTokenFailure(status, data);
+    throw mapTokenFailure(data, true);
   }
 
   async function recover({ email }) {

@@ -6,3 +6,6 @@
   from   = "/*"
   to     = "/index.html"
   status = 200
+
+[build.environment]
+  ELECTRON_SKIP_BINARY_DOWNLOAD = "1"

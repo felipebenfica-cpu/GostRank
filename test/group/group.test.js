@@ -26,7 +26,7 @@ const mk = (f, getAccessToken = async () => TOKEN) => createGroupClient({
 
 function groupRoutes({ snapshots, members, profiles } = {}) {
   return [
-    [`group_members?select=group_id,groups(id,name,owner_id)&user_id=eq.${UID}`, {
+    [`group_members?select=group_id,groups(id,name,owner_id,photo)&user_id=eq.${UID}`, {
       status: 200, body: [{ group_id: GID, groups: { id: GID, name: 'Os Fantasmas', owner_id: U2 } }],
     }],
     [`group_members?select=user_id,joined_at&group_id=eq.${GID}`, {
@@ -37,7 +37,7 @@ function groupRoutes({ snapshots, members, profiles } = {}) {
         { user_id: U3, joined_at: '2026-01-03T00:00:00Z' },
       ],
     }],
-    ['/rest/v1/profiles?select=id,display_name&id=in.', {
+    ['/rest/v1/profiles?select=id,display_name,photo&id=in.', {
       status: 200,
       body: profiles || [{ id: U2, display_name: 'Dono' }, { id: UID, display_name: 'Eu Mesmo' }, { id: U3, display_name: null }],
     }],
@@ -74,7 +74,7 @@ test('load: sem grupo → null, com uma só consulta e id vindo do token', async
   const f = router([['group_members?select=group_id', { status: 200, body: [] }]]);
   assert.equal(await mk(f).load(), null);
   assert.equal(f.calls.length, 1);
-  assert.equal(f.calls[0].url, `${URL_OK}/rest/v1/group_members?select=group_id,groups(id,name,owner_id)&user_id=eq.${UID}`);
+  assert.equal(f.calls[0].url, `${URL_OK}/rest/v1/group_members?select=group_id,groups(id,name,owner_id,photo)&user_id=eq.${UID}`);
   assert.equal(f.calls[0].init.headers.Authorization, `Bearer ${TOKEN}`);
   assert.equal(f.calls[0].init.redirect, 'error');
   assert.ok(f.calls[0].init.signal);
@@ -98,7 +98,7 @@ test('load: com grupo junta membros, apelidos e snapshots (progress calculado)',
   assert.equal(g.members[0].mmr.progress, 1);
   assert.equal(g.members[2].mmr, null); // MMR escondido (RLS não devolveu)
   const urls = f.calls.map((c) => c.url);
-  assert.ok(urls.some((u) => u.includes(`/rest/v1/profiles?select=id,display_name&id=in.(${U2},${UID},${U3})`)));
+  assert.ok(urls.some((u) => u.includes(`/rest/v1/profiles?select=id,display_name,photo&id=in.(${U2},${UID},${U3})`)));
   assert.ok(urls.some((u) => u.includes(`/rest/v1/mmr_snapshots?select=user_id,current_mmr,goal_mmr,start_mmr,wins,losses,status,updated_at&user_id=in.(${U2},${UID},${U3})`)));
   assert.equal(f.calls.length, 4);
 });
@@ -145,6 +145,11 @@ test('invite: devolve código e validade (ms); só dono', async () => {
   assert.equal(f.calls[0].url, `${URL_OK}/rest/v1/rpc/create_invite`);
   await assert.rejects(mk(fakeFetch({ status: 400, body: { message: 'not_owner' } })).invite(), (e) => e.message === MESSAGES.not_owner);
   await assert.rejects(mk(fakeFetch({ status: 200, body: [{ code: 'lixo', expires_at: 'x' }] })).invite(), (e) => e.code === 'bad_response');
+});
+
+test('convite permanente retorna null como validade e conserva o código do servidor', async () => {
+  const response = { status: 200, body: [{ code: 'RKWZ2NJJNF', expires_at: null }] };
+  assert.deepEqual(await mk(fakeFetch(response)).invite(), { code: 'RKWZ2NJJNF', expiresAt: null });
 });
 
 test('join: normaliza código, mapeia todos os erros do banco', async () => {

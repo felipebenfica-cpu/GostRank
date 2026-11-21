@@ -149,7 +149,7 @@ function groupState() {
     ['/rest/v1/profiles?select=id,display_name', { status: 200, body: [{ id: UID, display_name: 'Eu Mesmo' }, { id: U2, display_name: 'Colega' }] }],
     ['/rest/v1/mmr_snapshots?select=', { status: 200, body: [] }],
     ['/rest/v1/mmr_snapshots?on_conflict', { status: 201 }],
-    ['/rest/v1/messages?select=id,user_id,body,created_at&group_id', { status: 200, body: s.messages }],
+    ['/rest/v1/messages?select=id,user_id,body,created_at,edited_at&group_id', { status: 200, body: s.messages }],
     ['/rest/v1/messages?select=id,user_id,body,created_at', (url, init) => {
       const b = JSON.parse(init.body);
       const row = { id: s.messages.length + 1, user_id: b.user_id, body: b.body, created_at: '2026-11-20T10:00:00Z' };
@@ -198,7 +198,7 @@ test('fluxo: login → criar → convite → chat → voz → sair; erros do ban
   // voz sem grupo
   assert.equal((await e.call('gr:voice:token', {})).ok, false);
   r = await e.call('gr:group:join', { code: 'zzzzzzzzzz' });
-  assert.deepEqual(r, { ok: false, error: 'Código de convite inválido, expirado ou já usado.' });
+  assert.deepEqual(r, { ok: false, error: 'Este código não corresponde a um grupo. Confira as 10 letras e números.' });
   r = await e.call('gr:group:create', { name: '  Os Fantasmas ' });
   assert.equal(r.ok, true);
   assert.equal(r.view.group.name, 'Os Fantasmas');

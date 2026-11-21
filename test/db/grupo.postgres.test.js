@@ -12,16 +12,18 @@ const migDir = path.join(__dirname, '..', '..', 'supabase', 'migrations');
 const sql1 = path.join(migDir, '0001_perfis.sql');
 const sql2 = path.join(migDir, '0002_grupo.sql');
 
-const binDir = (() => {
+const binDir = process.env.GR_PG_BINDIR || (() => {
   try {
     const v = fs.readdirSync('/usr/lib/postgresql').sort().pop();
     const d = `/usr/lib/postgresql/${v}/bin`;
     return fs.existsSync(`${d}/initdb`) && fs.existsSync(`${d}/pg_ctl`) ? d : null;
   } catch { return null; }
 })();
-const psqlBin = fs.existsSync('/usr/bin/psql') ? '/usr/bin/psql' : null;
+const psqlPath = process.env.GR_PSQL || '/usr/bin/psql';
+const psqlBin = fs.existsSync(psqlPath) ? psqlPath : null;
 const pgcryptoOk = (() => {
   try {
+    if (binDir && fs.existsSync(path.join(binDir, '../share/postgresql/extension/pgcrypto.control'))) return true;
     return fs.readdirSync('/usr/share/postgresql').some((v) =>
       fs.existsSync(`/usr/share/postgresql/${v}/extension/pgcrypto.control`));
   } catch { return false; }
@@ -33,6 +35,7 @@ function run(cmd, args) {
   return spawnSync(c, a, { encoding: 'utf8' });
 }
 
+const tcp = process.env.GR_PG_LOOPBACK === '1';
 let skipReason = null;
 let dir;
 const port = '55' + String(Math.floor(100 + Math.random() * 800));
@@ -41,7 +44,7 @@ if (!binDir || !psqlBin) skipReason = 'Postgres local nao encontrado';
 else if (!pgcryptoOk) skipReason = 'extensao pgcrypto nao instalada no Postgres local';
 
 function exec(sqlText) {
-  const r = spawnSync(psqlBin, ['-h', dir, '-p', port, '-U', 'postgres', '-d', 'gr', '-v', 'ON_ERROR_STOP=1', '-At', '-c', sqlText],
+  const r = spawnSync(psqlBin, ['-h', tcp ? '127.0.0.1' : dir, '-p', port, '-U', 'postgres', '-d', 'gr', '-v', 'ON_ERROR_STOP=1', '-At', '-c', sqlText],
     { encoding: 'utf8' });
   const out = (r.stdout || '').trim();
   return { ok: r.status === 0, out, last: out.split('\n').pop(), err: (r.stderr || '').trim() };
@@ -53,7 +56,7 @@ const as = (uid, s) => exec(`set request.jwt.claim.sub = '${uid}'; set role auth
 const asAnon = (s) => exec(`set request.jwt.claim.sub = ''; set role anon; ${s}`);
 const asService = (s) => exec(`set role service_role; ${s}`);
 function psqlFile(f) {
-  const r = spawnSync(psqlBin, ['-h', dir, '-p', port, '-U', 'postgres', '-d', 'gr', '-v', 'ON_ERROR_STOP=1', '-q', '-f', f],
+  const r = spawnSync(psqlBin, ['-h', tcp ? '127.0.0.1' : dir, '-p', port, '-U', 'postgres', '-d', 'gr', '-v', 'ON_ERROR_STOP=1', '-q', '-f', f],
     { encoding: 'utf8' });
   return { ok: r.status === 0, err: (r.stderr || '').trim() };
 }
@@ -88,9 +91,9 @@ test.before(() => {
   const data = path.join(dir, 'data');
   let r = run(`${binDir}/initdb`, ['-D', data, '-U', 'postgres', '--auth=trust', '-E', 'UTF8']);
   if (r.status !== 0) { skipReason = 'initdb falhou: ' + (r.stderr || '').slice(0, 200); return; }
-  r = run(`${binDir}/pg_ctl`, ['-D', data, '-o', `-p ${port} -k ${dir} -c listen_addresses=''`, '-l', path.join(dir, 'log'), '-w', 'start']);
+  r = run(`${binDir}/pg_ctl`, ['-D', data, '-o', tcp ? `-p ${port} -c unix_socket_directories='' -c listen_addresses=127.0.0.1` : `-p ${port} -k ${dir} -c listen_addresses=''`, '-l', path.join(dir, 'log'), '-w', 'start']);
   if (r.status !== 0) { skipReason = 'pg_ctl start falhou: ' + (r.stderr || '').slice(0, 200); return; }
-  const c = spawnSync(psqlBin, ['-h', dir, '-p', port, '-U', 'postgres', '-d', 'postgres', '-c', 'create database gr;'], { encoding: 'utf8' });
+  const c = spawnSync(psqlBin, ['-h', tcp ? '127.0.0.1' : dir, '-p', port, '-U', 'postgres', '-d', 'postgres', '-c', 'create database gr;'], { encoding: 'utf8' });
   assert.strictEqual(c.status, 0, c.stderr);
   const boot = path.join(dir, 'boot.sql');
   fs.writeFileSync(boot, `
@@ -450,4 +453,136 @@ t('apagar conta limpa tudo e passa a posse do grupo', () => {
   r = as(F, 'select public.delete_my_account()');
   assert.ok(r.ok, r.err);
   assert.strictEqual(pg(`select count(*) from public.groups where id = '${g3}'`).out, '0');
+});
+
+t('0003 recupera convite antigo e permite mais de cinco entradas pelo mesmo código', () => {
+  const sql3 = path.join(migDir, '0003_social.sql');
+  const code = invite(C);
+  assert.ok(pg(`update public.group_invites set expires_at = now() - interval '1 month', uses = max_uses where code = '${code}'`).ok);
+  for (let i = 0; i < 2; i++) {
+    const migration = psqlFile(sql3);
+    assert.ok(migration.ok, migration.err);
+  }
+  const groupId = as(C, 'select public.my_group_id()').last;
+  for (let i = 0; i < 7; i++) {
+    const joined = as(D, `select public.join_group(' ${code.toLowerCase()} ')`);
+    assert.ok(joined.ok, joined.err);
+    assert.equal(joined.last, groupId);
+    assert.ok(as(D, 'select public.leave_group()').ok);
+  }
+  assert.equal(invite(C), invite(C));
+  const result = as(C, 'select expires_at is null from public.create_invite()');
+  assert.equal(result.last, 't', result.err);
+});
+
+t('busca e amizade entre grupos respeitam destinatário, terceiros e preferência de descoberta', () => {
+  const people = (uid, target, query = 'null') => as(uid, `select coalesce((select state from public.social_people(${query}) where id = '${target}'), '-')`);
+  const friend = (uid, action, target) => as(uid, `select public.social_friend('${action}', '${target}')`);
+  assert.ok(as(C, "update public.profiles set display_name = 'Teste Social' where id = auth.uid()").ok);
+  assert.equal(people(A, C, "'tE sOc'").last, 'none');
+  for (const cancelBy of [A, C]) {
+    assert.ok(friend(A, 'send', C).ok);
+    assert.ok(friend(cancelBy, 'remove', cancelBy === A ? C : A).ok);
+    assert.equal(people(C, A).last, '-');
+  }
+  assert.ok(friend(A, 'send', C).ok);
+  assert.equal(people(A, C).last, 'outgoing');
+  assert.equal(people(C, A).last, 'incoming');
+  assert.equal(friend(A, 'accept', C).ok, false);
+  assert.equal(friend(D, 'accept', A).ok, false);
+  assert.equal(people(C, A).last, 'incoming');
+  assert.equal(people(D, A).last, '-');
+  assert.ok(friend(C, 'accept', A).ok);
+  assert.equal(people(A, C).last, 'friend');
+  assert.equal(people(C, A).last, 'friend');
+  assert.ok(friend(A, 'remove', C).ok);
+  assert.equal(people(C, A).last, '-');
+  assert.equal(people(A, C).last, '-');
+  assert.ok(as(C, 'select public.social_privacy(false)').ok);
+  assert.equal(people(D, C, "'Teste Social'").last, '-');
+  assert.equal(friend(D, 'send', C).ok, false);
+  assert.equal(people(C, C).last, 'self');
+  assert.equal(asAnon("select * from public.social_people('Teste Social')").ok, false);
+});
+
+t('foto de grupo exige dono e foto do perfil é vinculada à sessão', () => {
+  const jpeg = 'data:image/jpeg;base64,/9j/4AAQSkZJRgAB/9k=';
+  const photo = (uid, scope, value) => as(uid, `select public.social_photo('${scope}', ${value})`);
+  assert.ok(as(D, `select public.join_group('${invite(C)}')`).ok);
+  assert.equal(photo(D, 'group', `'${jpeg}'`).ok, false);
+  assert.equal(photo(C, 'group', "'data:image/svg+xml;base64,AAAA'").ok, false);
+  const updated = photo(C, 'group', `'${jpeg}'`);
+  assert.ok(updated.ok, updated.err);
+  assert.equal(as(D, 'select photo from public.groups where id = public.my_group_id()').last, jpeg);
+  assert.ok(photo(D, 'profile', `'${jpeg}'`).ok);
+  assert.equal(as(C, `select photo from public.profiles where id = '${D}'`).last, jpeg);
+  assert.equal(as(C, 'select photo is null from public.profiles where id = auth.uid()').last, 't');
+  assert.equal(asAnon(`select public.social_photo('profile', '${jpeg}')`).ok, false);
+  assert.ok(photo(C, 'group', 'null').ok);
+  assert.equal(as(D, 'select photo is null from public.groups where id = public.my_group_id()').last, 't');
+});
+
+t('ajuste de MMR para amigos exige amizade aceita, inclusive dentro do grupo', () => {
+  const own = `user_id = '${D}'`;
+  assert.ok(as(D, "update public.profiles set mmr_visibility = 'friends' where id = auth.uid()").ok);
+  assert.ok(as(D, "insert into public.mmr_snapshots (user_id, current_mmr, status) values (auth.uid(),2000,'on_track') on conflict (user_id) do update set current_mmr = 2000").ok);
+  assert.equal(count(C, 'public.mmr_snapshots', own), 0);
+  assert.ok(as(C, `select public.social_friend('send','${D}')`).ok);
+  assert.equal(count(C, 'public.mmr_snapshots', own), 0);
+  assert.ok(as(D, `select public.social_friend('accept','${C}')`).ok);
+  assert.equal(count(C, 'public.mmr_snapshots', own), 1);
+  assert.ok(as(C, `select public.social_friend('remove','${D}')`).ok);
+  assert.equal(count(C, 'public.mmr_snapshots', own), 0);
+});
+
+t('0004: editar/excluir apenas texto próprio com sessão e vínculo atual de grupo', () => {
+  const migration = path.join(migDir, '0004_chat_mensagens.sql');
+  const inserted = as(D, "insert into public.messages (group_id, body) values (public.my_group_id(), 'antes') returning id");
+  assert.ok(inserted.ok, inserted.err);
+  const messageId = inserted.out.split('\n').find(line => /^\d+$/.test(line));
+  assert.ok(messageId, inserted.out);
+  for (let i = 0; i < 2; i++) {
+    const m = psqlFile(migration);
+    assert.ok(m.ok, m.err);
+  }
+  const where = 'where id = ' + messageId;
+  const read = uid => as(uid, `select body || '|' || (edited_at is not null)::text from public.messages ${where}`);
+  assert.equal(read(C).last, 'antes|false');
+  const change = `update public.messages set body = 'revista' ${where}`;
+  const erase = `delete from public.messages ${where}`;
+  assert.equal(asAnon(change).ok, false);
+  assert.equal(asAnon(erase).ok, false);
+  for (const uid of [C, B]) { // C é o dono do grupo de D. B pertence a outro grupo.
+    assert.equal(as(uid, change).last, 'UPDATE 0');
+    assert.equal(as(uid, erase).last, 'DELETE 0');
+  }
+  assert.equal(as(D, `update public.messages set edited_at = now() ${where}`).ok, false);
+  assert.equal(as(D, `update public.messages set user_id = '${C}' ${where}`).ok, false);
+  assert.equal(as(D, `update public.messages set group_id = gen_random_uuid() ${where}`).ok, false);
+  assert.equal(as(D, `update public.messages set body = '' ${where}`).ok, false);
+  assert.equal(as(D, change).last, 'UPDATE 1');
+  assert.equal(read(C).last, 'revista|true');
+  assert.ok(as(D, 'select public.leave_group()').ok);
+  assert.equal(as(D, change).last, 'UPDATE 0');
+  assert.equal(as(D, erase).last, 'DELETE 0');
+  assert.ok(as(D, `select public.join_group('${invite(C)}')`).ok);
+  assert.equal(as(D, erase).last, 'DELETE 1');
+  assert.equal(count(C, 'public.messages', 'id = ' + messageId), 0);
+});
+
+t('0005: somente amigos confirmados podem enviar e consultar a conversa privada', () => {
+  const migration = psqlFile(path.join(migDir, '0005_mensagens_diretas.sql'));
+  assert.ok(migration.ok, migration.err);
+  const dm = (uid, peer, body = 'null') => as(uid,
+    `select body from public.social_dm('${peer}',${body},null)`);
+  assert.equal(dm(C, D).ok, false);
+  assert.ok(as(C, `select public.social_friend('send','${D}')`).ok);
+  assert.equal(dm(C, D, "'pendente'").ok, false);
+  assert.ok(as(D, `select public.social_friend('accept','${C}')`).ok);
+  assert.equal(dm(C, D, "'privada'").last, 'privada');
+  assert.equal(dm(D, C).last, 'privada');
+  assert.equal(dm(B, C).ok, false);
+  assert.equal(as(B, 'select * from public.direct_messages').ok, false);
+  assert.ok(as(D, `select public.social_friend('remove','${C}')`).ok);
+  assert.equal(dm(C, D).ok, false);
 });

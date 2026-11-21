@@ -27,7 +27,7 @@ test('fetchSince sem afterId: as mais recentes, devolvidas em ordem crescente', 
   const out = await mk(f).fetchSince(GID, 0);
   assert.deepEqual(out.map((m) => m.id), [3, 4, 5]);
   assert.deepEqual(out[0], { id: 3, userId: U2, body: 'msg 3', createdAt: Date.parse('2026-11-20T10:00:00Z') });
-  assert.equal(f.calls[0].url, `${URL_OK}/rest/v1/messages?select=id,user_id,body,created_at&group_id=eq.${GID}&order=id.desc&limit=50`);
+  assert.equal(f.calls[0].url, `${URL_OK}/rest/v1/messages?select=id,user_id,body,created_at,edited_at&group_id=eq.${GID}&order=id.desc&limit=50`);
   assert.equal(f.calls[0].init.headers.Authorization, `Bearer ${TOKEN}`);
 });
 
@@ -35,7 +35,7 @@ test('fetchSince com afterId: id=gt e ordem crescente; limite até 200; descarta
   const f = fakeFetch({ status: 200, body: [row(11), { id: 'x' }, row(12, 'nao-uuid'), row(13)] });
   const out = await mk(f).fetchSince(GID, 10, 500);
   assert.deepEqual(out.map((m) => m.id), [11, 13]);
-  assert.equal(f.calls[0].url, `${URL_OK}/rest/v1/messages?select=id,user_id,body,created_at&group_id=eq.${GID}&id=gt.10&order=id.asc&limit=200`);
+  assert.equal(f.calls[0].url, `${URL_OK}/rest/v1/messages?select=id,user_id,body,created_at,edited_at&group_id=eq.${GID}&id=gt.10&order=id.asc&limit=200`);
   await assert.rejects(mk(f).fetchSince('lixo', 0), (e) => e.code === 'not_in_group');
   await assert.rejects(mk(fakeFetch({ status: 200, body: {} })).fetchSince(GID, 0), (e) => e.code === 'bad_response');
 });
@@ -73,6 +73,11 @@ function fakeChatClient() {
     const newer = c.all.filter((m) => m.id > afterId);
     return afterId > 0 ? newer.slice(0, limit) : newer.slice(-limit);
   };
+  c.fetchRecent = async (groupId, previous, limit) => {
+    c.calls.push({ groupId, previous, limit });
+    if (c.fail) throw new Error('rede');
+    return c.all.slice(-limit).map(m => ({ ...m }));
+  };
   c.send = async (groupId, body) => {
     const m = { id: (c.all.at(-1)?.id ?? 0) + 1, userId: UID, body, createdAt: 1 };
     c.all.push(m);
@@ -109,7 +114,7 @@ test('feed: só sonda com grupo E janela focada, a cada 4 s; para ao sair do gru
   assert.deepEqual(v.messages.map((m) => m.id), [1, 2, 3]);
   assert.equal(v.messages[0].displayName, 'Colega');
   assert.equal(v.messages[0].mine, false);
-  assert.equal(client.calls.at(-1).afterId, 2);
+  assert.deepEqual(client.calls.at(-1).previous.map(m => m.id), [1, 2]);
   feed.setContext(null); // saiu do grupo / da conta
   assert.equal(timers.active.size, 0);
   assert.deepEqual(feed.getView(), { messages: [], status: 'idle' });
@@ -170,4 +175,42 @@ test('texto de chat e token nunca vão para o console', async () => {
   const all = spy.out.join('\n');
   assert.ok(!all.includes('segredo do chat'));
   assert.ok(!all.includes(TOKEN));
+});
+
+test('cliente edita e exclui só id, grupo e usuário da sessão, detectando alteração sem linha', async () => {
+  const f = fakeFetch({ status: 200, body: [{ ...row(12, UID, 'revista'), edited_at: '2026-11-21T12:00:00Z' }] });
+  const client = mk(f);
+  await client.edit(GID, 12, ' revista ');
+  await client.remove(GID, 12);
+  const [edit, remove] = f.calls;
+  assert.equal(edit.init.method, 'PATCH');
+  assert.deepEqual(edit.body, { body: 'revista' });
+  assert.equal(remove.init.method, 'DELETE');
+  for (const call of f.calls) {
+    const query = new URL(call.url).searchParams;
+    assert.equal(query.get('id'), 'eq.12');
+    assert.equal(query.get('group_id'), 'eq.' + GID);
+    assert.equal(query.get('user_id'), 'eq.' + UID);
+    assert.equal(call.init.headers.Authorization, 'Bearer ' + TOKEN);
+    assert.match(call.init.headers.Prefer, /return=representation/);
+  }
+  const denied = mk(fakeFetch({ status: 200, body: [] }));
+  await assert.rejects(denied.edit(GID, 12, 'tentativa'));
+  await assert.rejects(denied.remove(GID, 12));
+});
+
+test('feed reconhece edição e exclusão remotas mesmo sem mudar o último ID', async () => {
+  const client = fakeChatClient();
+  const feed = createChatFeed({ client, timers: fakeTimers() });
+  feed.setContext({ groupId: GID, members });
+  client.add(3);
+  await feed.poll();
+  client.all[1] = { ...client.all[1], body: 'corrigida', editedAt: Date.now() };
+  await feed.poll();
+  const second = feed.getView().messages[1];
+  assert.equal(second.body, 'corrigida');
+  assert.equal(second.editedAt, client.all[1].editedAt);
+  client.all.splice(1,1);
+  await feed.poll();
+  assert.deepEqual(feed.getView().messages.map(m => m.id), [1,3]);
 });
