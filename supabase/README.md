@@ -60,9 +60,9 @@ Pode rodar de novo sem problema. Se aparecer erro em vermelho, nao mexa em mais 
 - Chat: no maximo 10 mensagens a cada 10 segundos por pessoa. Mensagens nao podem ser editadas; cada um apaga so as suas.
 - Apagar a conta apaga tudo da pessoa (perfil, mensagens, resumo de MMR). Se ela era dona de um grupo, a posse passa para o membro mais antigo.
 
-### Atualização de convites, amigos e fotos (0003)
+### Atualização de convites, amigos e fotos (0003_social, 0004, 0005)
 
-Depois de aplicar o 0002, execute [0003_social.sql](migrations/0003_social.sql) no SQL Editor do mesmo projeto. A atualização permite reutilizar o código de convite sem prazo nem limite de usos. A capacidade do grupo continua em dez membros. A busca por apelido, os pedidos de amizade, a privacidade da descoberta e as fotos de perfil e grupo usam o mesmo banco no app e no site.
+Estes tres arquivos ([0003_social.sql](migrations/0003_social.sql), [0004_chat_mensagens.sql](migrations/0004_chat_mensagens.sql) e [0005_mensagens_diretas.sql](migrations/0005_mensagens_diretas.sql)) foram uma etapa intermediaria. **Sao opcionais:** se voce ja rodou, otimo; se nao rodou, pule direto para o `0006_discord.sql` (secao 7), que faz tudo isso e muito mais. Se ja rodou, o 0006 traz as amizades, os pedidos, as conversas privadas e as fotos para o modelo novo automaticamente.
 
 ## 5. Publicar as funcoes do servidor (Edge Functions)
 
@@ -128,17 +128,21 @@ Enquanto esses segredos nao existirem, a voz responde "voz nao configurada" e o 
 
 Depois de entrar na Steam, o navegador mostra uma mensagem curta (por exemplo, "Steam vinculada. Pode voltar ao Ghost Rank."). O Supabase so permite paginas HTML em projetos com **dominio proprio**; sem isso, a funcao responde em texto simples, o que funciona do mesmo jeito. Se um dia o projeto tiver dominio proprio, da para cadastrar o segredo opcional `STEAM_LINK_HTML` = `true` para a resposta sair em HTML.
 
-# Etapa 6: modelo completo do Discord (0003)
+# Etapa 6: modelo completo do Discord (0006)
 
 Amigos, varios servidores, canais, cargos, DMs, reacoes, anexos, convites ilimitados e tempo real.
-O app antigo (.exe da Etapa 5) continua funcionando depois desta atualizacao.
+Os .exe anteriores continuam funcionando depois desta atualizacao.
 
-## 7. Aplicar o arquivo 0003
+## 7. Aplicar o arquivo 0006 (passo unico)
+
+Precisa so do 0001 e do 0002 ja aplicados. **Tanto faz** se voce rodou ou nao o 0003_social, o 0004
+e o 0005: o 0006 funciona nos dois casos e, se eles foram rodados, copia (uma vez so) as amizades,
+os pedidos pendentes, as conversas privadas e as fotos para o modelo novo. Nada e apagado.
 
 1. No painel do Supabase, abra **SQL Editor** > **New query**.
-2. Abra o arquivo `supabase/migrations/0003_discord.sql`, copie **tudo** e cole.
+2. Abra o arquivo `supabase/migrations/0006_discord.sql`, copie **tudo** e cole.
 3. Clique em **Run**. Tem que aparecer "Success. No rows returned".
-4. Pode rodar de novo sem problema (o arquivo e idempotente).
+4. Pode rodar de novo sem problema (o arquivo e idempotente e nao duplica dados).
 
 Isso ja liga o Realtime (tempo real) e cria os buckets `avatars` e `attachments` no Storage.
 Nao precisa mexer em mais nada no painel para isso.
@@ -160,7 +164,7 @@ Para cada uma, `livekit-token` e `steam-link`:
 
 Os segredos do LiveKit ja cadastrados continuam valendo; nao precisa cadastrar de novo.
 
-### O que o 0003 faz
+### O que o 0006 faz
 
 - Nome de usuario unico (`@usuario`) para todo mundo, gerado a partir do apelido; pode ser trocado.
 - Amigos: pedidos, aceitar, recusar, remover e bloquear; busca de pessoas pelo nome de usuario.
@@ -171,3 +175,6 @@ Os segredos do LiveKit ja cadastrados continuam valendo; nao precisa cadastrar d
   com validade (30 min a 7 dias) e limite (1 a 100 usos), e revogar.
 - Mensagens: DMs, respostas, edicao, reacoes, anexos (ate 8 MB), mencoes, fixadas, nao lidas e busca.
 - Tempo real com canais privados: so membros do servidor, participantes da DM e amigos recebem os eventos.
+- Compatibilidade: as funcoes `social_*` do .exe anterior continuam respondendo, agora sobre o modelo novo;
+  quem desligou "aparecer na busca" continua fora da busca de estranhos; as fotos antigas aparecem
+  enquanto a pessoa nao enviar uma imagem nova.

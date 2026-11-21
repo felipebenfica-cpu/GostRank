@@ -3,7 +3,7 @@
 // Etapa 6: amigos, busca de pessoas, DMs, meu perfil (nome de usuário, sobre mim, status, avatar).
 
 const { appError, isUuid } = require('./rest');
-const { PROFILE_COLS, USERNAME_RE } = require('./users');
+const { PROFILE_COLS, USERNAME_RE, selectWithPhoto } = require('./users');
 const { validateUpload } = require('./files');
 
 const RELATIONS = Object.freeze(['friend', 'pending_in', 'pending_out', 'blocked']);
@@ -49,7 +49,7 @@ function createSocialService({ rest, users, onChange = () => {} } = {}) {
   async function loadMe() {
     const { id } = await rest.identity();
     meId = id;
-    const rows = await rest.select(`/rest/v1/profiles?select=${PROFILE_COLS}&id=eq.${id}`);
+    const rows = await selectWithPhoto(rest, (cols) => `/rest/v1/profiles?select=${cols}&id=eq.${id}`, PROFILE_COLS);
     users.upsertRows(rows);
     return users.get(id);
   }
@@ -82,7 +82,7 @@ function createSocialService({ rest, users, onChange = () => {} } = {}) {
     dms = list;
   }
 
-  /** Carrega tudo. Erros de "falta a 0003" sobem para quem chamou decidir o modo antigo. */
+  /** Carrega tudo. Erros de "falta a 0006" sobem para quem chamou decidir o modo antigo. */
   async function refresh() {
     const gen = ++generation;
     await loadMe();

@@ -2,6 +2,8 @@
 -- Amigos, varios servidores, canais e categorias, cargos, DMs, reacoes, respostas, edicao,
 -- anexos, fixadas, nao lidas, convites ilimitados, Realtime e Storage.
 -- Rode este arquivo inteiro no SQL Editor do Supabase, DEPOIS do 0001 e do 0002.
+-- Funciona tendo rodado ou nao 0003_social, 0004_chat_mensagens e 0005_mensagens_diretas: se rodou,
+-- amizades, pedidos, conversas privadas e fotos sao trazidos para o modelo novo (uma vez so).
 -- Pode rodar de novo sem problema. Os dados atuais sao preservados: o grupo atual vira um
 -- servidor com #geral e "Geral", e as mensagens antigas vao para o #geral.
 -- O app antigo (.exe da Etapa 5) continua funcionando: create_group(p_name), create_invite(),
@@ -78,6 +80,36 @@ alter table public.profiles add constraint profiles_username_check check (userna
 alter table public.profiles drop constraint if exists profiles_avatar_path_check;
 alter table public.profiles add constraint profiles_avatar_path_check
   check (avatar_path is null or avatar_path ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}\.(png|jpg|jpeg|webp|gif)$');
+
+-- Aparecer na busca (0003_social criou; aqui garantimos para quem nao rodou).
+alter table public.profiles add column if not exists discoverable boolean not null default true;
+
+-- Foto pequena antiga (0003_social): JPEG em data: URL. Continua aceita; o app novo usa o Storage
+-- (avatar_path/icon_path) e cai nesta foto quando nao houver imagem no Storage.
+create or replace function public.valid_social_photo(p_photo text)
+returns boolean language plpgsql immutable strict set search_path = '' as $$
+declare
+  bytes bytea;
+  payload text;
+begin
+  if octet_length(p_photo) > 65536 or p_photo !~ '^data:image/jpeg;base64,/9j/[A-Za-z0-9+/]*={0,2}$' then
+    return false;
+  end if;
+  payload := substr(p_photo, 24);
+  begin
+    bytes := decode(payload, 'base64');
+  exception when data_exception then
+    return false;
+  end;
+  return octet_length(bytes) >= 5
+     and right(encode(bytes, 'hex'),4) = 'ffd9'
+     and replace(encode(bytes,'base64'), chr(10), '') = payload;
+end;
+$$;
+revoke all on function public.valid_social_photo(text) from public, anon, authenticated;
+grant execute on function public.valid_social_photo(text) to authenticated;
+
+alter table public.profiles add column if not exists photo text check (public.valid_social_photo(photo));
 
 -- Gera um nome de usuario livre a partir de um texto qualquer.
 create or replace function public.make_username(p_base text)
@@ -216,6 +248,8 @@ alter table public.groups add constraint groups_icon_color_check check (icon_col
 alter table public.groups drop constraint if exists groups_icon_path_check;
 alter table public.groups add constraint groups_icon_path_check
   check (icon_path is null or icon_path ~ '^g_[0-9a-f-]{36}/[0-9a-f-]{36}\.(png|jpg|jpeg|webp|gif)$');
+
+alter table public.groups add column if not exists photo text check (public.valid_social_photo(photo));
 
 -- Agora uma pessoa pode estar em varios servidores.
 alter table public.group_members drop constraint if exists group_members_user_id_key;
@@ -933,6 +967,10 @@ begin
     from public.profiles p
     where p.id <> uid
       and (p.username like padrao or lower(p.display_name) like padrao)
+      -- Quem escolheu nao aparecer na busca so aparece para quem ja tem relacao com a pessoa.
+      and (p.discoverable or exists (
+        select 1 from public.relationships rk where rk.user_id = uid and rk.other_id = p.id
+      ))
       and not exists (
         select 1 from public.relationships rb where rb.user_id = p.id and rb.other_id = uid and rb.kind = 'blocked'
       )
@@ -2117,6 +2155,215 @@ end;
 $$;
 
 -- ===========================================================================
+-- 14b. Compatibilidade com 0003_social, 0004_chat_mensagens e 0005_mensagens_diretas
+-- Quem rodou essas migracoes tem amizades, conversas privadas e fotos nas tabelas antigas.
+-- Aqui: (1) um so gatilho de edicao e uma so politica de update nas mensagens; (2) as funcoes
+-- social_* continuam existindo (o .exe anterior ainda as chama), agora sobre o modelo novo;
+-- (3) os dados antigos sao copiados UMA vez para relationships, dm_channels e messages.
+-- As tabelas e colunas antigas nao sao apagadas.
+-- ===========================================================================
+
+-- (1) 0004 criou outro gatilho de edited_at e outra politica de update; ficam os do 0006.
+drop trigger if exists messages_set_edited_at on public.messages;
+drop policy if exists messages_update_proprio on public.messages;
+
+-- Marca de copias de dados ja feitas (para rodar de novo sem duplicar nem desfazer mudancas).
+create table if not exists public.schema_marks (
+  name text primary key,
+  done_at timestamptz not null default now()
+);
+alter table public.schema_marks enable row level security;
+revoke all on table public.schema_marks from public, anon, authenticated;
+
+-- (2) Funcoes do 0003_social/0005 reescritas sobre relationships, dm_channels e messages.
+create or replace function public.can_read_social_mmr(p_owner uuid)
+returns boolean language sql stable security definer set search_path = '' as $$
+  select public.can_see_mmr(p_owner);
+$$;
+
+create or replace function public.social_people(p_query text default null, p_after uuid default null)
+returns table(id uuid, name text, photo text, state text, discoverable boolean)
+language sql stable security definer set search_path = '' as $$
+  with me as (select auth.uid() as uid),
+  mine as (
+    select r.other_id as other,
+      case r.kind when 'friend' then 'friend' when 'pending_out' then 'outgoing' else 'incoming' end as relation
+    from public.relationships r cross join me
+    where r.user_id = me.uid and r.kind in ('friend', 'pending_out', 'pending_in')
+  )
+  select p.id, p.display_name, p.photo,
+    case when p.id = me.uid then 'self' else coalesce(m.relation, 'none') end,
+    case when p.id = me.uid then p.discoverable end
+  from public.profiles p cross join me left join mine m on m.other = p.id
+  where me.uid is not null and (p_after is null or p.id > p_after)
+    and not exists (select 1 from public.relationships rb
+                    where rb.kind = 'blocked'
+                      and ((rb.user_id = p.id and rb.other_id = me.uid) or (rb.user_id = me.uid and rb.other_id = p.id)))
+    and ((p_query is null and (p.id = me.uid or m.other is not null))
+      or (p.id <> me.uid and (p.discoverable or m.other is not null)
+          and char_length(btrim(p_query)) between 2 and 64
+          and (strpos(lower(p.display_name), lower(btrim(p_query))) > 0
+               or strpos(p.username, lower(btrim(p_query))) > 0)))
+  order by case when p_query is not null then lower(p.display_name) = lower(btrim(p_query)) end desc,
+    p.id limit 12;
+$$;
+
+create or replace function public.social_friend(p_action text, p_target uuid)
+returns void language plpgsql security definer set search_path = '' as $$
+declare
+  uid uuid := auth.uid();
+  minha text;
+  dele text;
+begin
+  if uid is null then raise exception 'not authenticated' using errcode = '28000'; end if;
+  if p_target is null or p_target = uid then raise exception 'invalid_user'; end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('gr_rel:' || least(uid, p_target)::text || greatest(uid, p_target)::text));
+  select r.kind into minha from public.relationships r where r.user_id = uid and r.other_id = p_target;
+  select r.kind into dele from public.relationships r where r.user_id = p_target and r.other_id = uid;
+  if p_action = 'send' then
+    if minha = 'blocked' or dele = 'blocked' then raise exception 'invalid_user'; end if;
+    if minha in ('friend', 'pending_out') then return; end if;
+    if minha = 'pending_in' then
+      update public.relationships set kind = 'friend', created_at = now()
+        where (user_id = uid and other_id = p_target) or (user_id = p_target and other_id = uid);
+      return;
+    end if;
+    if not exists (select 1 from public.profiles p where p.id = p_target and p.discoverable) then
+      raise exception 'invalid_user';
+    end if;
+    perform public.rate_check('friend_request', 20, 3600);
+    insert into public.relationships (user_id, other_id, kind) values (uid, p_target, 'pending_out')
+      on conflict (user_id, other_id) do nothing;
+    insert into public.relationships (user_id, other_id, kind) values (p_target, uid, 'pending_in')
+      on conflict (user_id, other_id) do nothing;
+  elsif p_action = 'accept' then
+    if minha is distinct from 'pending_in' then raise exception 'invalid_user'; end if;
+    update public.relationships set kind = 'friend', created_at = now()
+      where (user_id = uid and other_id = p_target) or (user_id = p_target and other_id = uid);
+  elsif p_action = 'remove' then
+    delete from public.relationships
+      where kind in ('friend', 'pending_out', 'pending_in')
+        and ((user_id = uid and other_id = p_target) or (user_id = p_target and other_id = uid));
+  else
+    raise exception 'invalid_user';
+  end if;
+end;
+$$;
+
+create or replace function public.social_photo(p_scope text, p_photo text)
+returns void language plpgsql security definer set search_path = '' as $$
+declare
+  uid uuid := auth.uid();
+begin
+  if uid is null then raise exception 'not authenticated' using errcode = '28000'; end if;
+  if p_photo is not null and not public.valid_social_photo(p_photo) then raise exception 'invalid_photo'; end if;
+  if p_scope = 'profile' then
+    update public.profiles set photo = p_photo where id = uid;
+  elsif p_scope = 'group' then
+    update public.groups set photo = p_photo where owner_id = uid and id = public.my_group_id();
+    if not found then raise exception 'not_owner'; end if;
+  else
+    raise exception 'invalid_photo';
+  end if;
+end;
+$$;
+
+create or replace function public.social_privacy(p_discoverable boolean)
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  if auth.uid() is null then raise exception 'not authenticated' using errcode = '28000'; end if;
+  update public.profiles set discoverable = p_discoverable where id = auth.uid();
+end;
+$$;
+
+create or replace function public.social_dm(p_peer uuid, p_body text default null, p_before bigint default null)
+returns table(id bigint, mine boolean, body text, sent_at timestamptz)
+language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
+declare
+  uid uuid := auth.uid();
+  conversa uuid;
+begin
+  if uid is null then raise exception 'not authenticated' using errcode = '28000'; end if;
+  if p_peer is null or p_peer = uid or not public.are_friends(uid, p_peer)
+     or public.is_blocked_between(uid, p_peer) then
+    raise exception 'invalid_user';
+  end if;
+  select d.id into conversa from public.dm_channels d
+    where d.user_a = least(uid, p_peer) and d.user_b = greatest(uid, p_peer);
+  if p_body is not null then
+    if char_length(p_body) > 1000 or btrim(p_body) = '' or p_before is not null then
+      raise exception 'invalid_message';
+    end if;
+    if conversa is null then
+      insert into public.dm_channels (user_a, user_b) values (least(uid, p_peer), greatest(uid, p_peer))
+        on conflict (user_a, user_b) do nothing;
+      select d.id into conversa from public.dm_channels d
+        where d.user_a = least(uid, p_peer) and d.user_b = greatest(uid, p_peer);
+    end if;
+    -- O limite de 10 mensagens em 10 s vem do gatilho de mensagens.
+    insert into public.messages (dm_id, user_id, body) values (conversa, uid, btrim(p_body));
+  end if;
+  if conversa is null then
+    return;
+  end if;
+  return query select m.id, m.user_id = uid, m.body, m.created_at from public.messages m
+    where m.dm_id = conversa and (p_before is null or m.id < p_before)
+    order by m.id desc limit 50;
+end;
+$$;
+
+-- (3) Copia dos dados antigos, uma vez so.
+do $$
+begin
+  -- Amizades e pedidos: uma linha por direcao.
+  if to_regclass('public.friendships') is not null
+     and not exists (select 1 from public.schema_marks where name = 'friendships_to_relationships') then
+    insert into public.relationships (user_id, other_id, kind, created_at)
+    select x.u, x.o, x.k, x.c
+    from public.friendships f
+    cross join lateral (values
+      (f.user_low, f.user_high,
+        case when f.accepted then 'friend' when f.sender = f.user_low then 'pending_out' else 'pending_in' end,
+        f.created_at),
+      (f.user_high, f.user_low,
+        case when f.accepted then 'friend' when f.sender = f.user_high then 'pending_out' else 'pending_in' end,
+        f.created_at)
+    ) as x(u, o, k, c)
+    on conflict (user_id, other_id) do nothing;
+    insert into public.schema_marks (name) values ('friendships_to_relationships');
+  end if;
+
+  -- Conversas privadas: uma DM por par e as mensagens com a data original.
+  if to_regclass('public.direct_messages') is not null
+     and not exists (select 1 from public.schema_marks where name = 'direct_messages_to_messages') then
+    insert into public.dm_channels (user_a, user_b, created_at)
+    select least(dm.sender, dm.recipient), greatest(dm.sender, dm.recipient), min(dm.sent_at)
+    from public.direct_messages dm
+    group by 1, 2
+    on conflict (user_a, user_b) do nothing;
+
+    -- Sem o limite de taxa (ele troca a data por agora) e sem a checagem de bloqueio do historico.
+    alter table public.messages disable trigger messages_rate_limit;
+    alter table public.messages disable trigger messages_before_insert;
+    insert into public.messages (dm_id, group_id, channel_id, user_id, body, created_at)
+    select d.id, null, null, dm.sender, dm.body, dm.sent_at
+    from public.direct_messages dm
+    join public.dm_channels d
+      on d.user_a = least(dm.sender, dm.recipient) and d.user_b = greatest(dm.sender, dm.recipient)
+    order by dm.id;
+    alter table public.messages enable trigger messages_before_insert;
+    alter table public.messages enable trigger messages_rate_limit;
+
+    update public.dm_channels d set last_message_at = s.ultima
+    from (select m.dm_id, max(m.created_at) as ultima from public.messages m where m.dm_id is not null group by m.dm_id) s
+    where s.dm_id = d.id and (d.last_message_at is null or d.last_message_at < s.ultima);
+    insert into public.schema_marks (name) values ('direct_messages_to_messages');
+  end if;
+end;
+$$;
+
+-- ===========================================================================
 -- 15. Permissoes das funcoes
 -- ===========================================================================
 do $$
@@ -2140,7 +2387,10 @@ declare
     'public.delete_category(uuid)', 'public.create_channel(uuid, text, text, uuid)',
     'public.update_channel(uuid, text, text, uuid, integer, boolean)', 'public.delete_channel(uuid)',
     'public.pin_message(bigint, boolean)', 'public.mark_read(text, bigint)', 'public.unread_summary()',
-    'public.search_messages(text, text)', 'public.delete_my_account()'
+    'public.search_messages(text, text)', 'public.delete_my_account()',
+    -- Compatibilidade com o .exe anterior (0003_social/0005).
+    'public.can_read_social_mmr(uuid)', 'public.social_people(text, uuid)', 'public.social_friend(text, uuid)',
+    'public.social_photo(text, text)', 'public.social_privacy(boolean)', 'public.social_dm(uuid, text, bigint)'
   ];
 begin
   foreach f in array rpc loop

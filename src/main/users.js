@@ -3,6 +3,7 @@
 // Etapa 6: cache de usuários (UserLite) para a view: autores, amigos, membros, DMs.
 
 const { isUuid } = require('./rest');
+const { validPhoto } = require('../core/socialPhoto');
 
 const PROFILE_COLS = 'id,username,display_name,avatar_color,avatar_path,about,custom_status,status';
 const USERNAME_RE = /^[a-z0-9_.]{2,32}$/;
@@ -12,6 +13,33 @@ function cleanText(v, max) {
   if (typeof v !== 'string') return null;
   const s = v.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').trim();
   return s.length > 0 ? s.slice(0, max) : null;
+}
+
+/** Foto antiga (0003_social): só data: URL JPEG válida; senão null. */
+function legacyPhoto(v) {
+  return typeof v === 'string' && v.length > 0 && validPhoto(v) ? v : null;
+}
+
+// Bancos sem a coluna `photo` (não rodaram 0003_social nem 0006): lembra e pede sem ela.
+const photoColumn = new WeakMap(); // rest -> false quando a coluna não existe
+
+/**
+ * SELECT com a coluna `photo` quando ela existir. `build(cols)` monta o caminho com as colunas.
+ * Se o banco recusar por coluna inexistente (needs_migration), tenta de novo sem `photo`.
+ */
+async function selectWithPhoto(rest, build, cols) {
+  if (rest && typeof rest === 'object' && photoColumn.get(rest) !== false) {
+    try {
+      return await rest.select(build(`${cols},photo`));
+    } catch (err) {
+      if (!err || err.code !== 'needs_migration') throw err;
+      // Só lembra "sem photo" se o pedido sem ela funcionar (senão falta outra coisa, ex.: 0006 inteira).
+      const rows = await rest.select(build(cols));
+      photoColumn.set(rest, false);
+      return rows;
+    }
+  }
+  return rest.select(build(cols));
 }
 
 function createUserCache({ rest } = {}) {
@@ -24,7 +52,8 @@ function createUserCache({ rest } = {}) {
     const displayName = (cleanText(row.display_name, 32) || username || 'fantasma').replace(/[<>]/g, '');
     const color = Number.isInteger(row.avatar_color) && row.avatar_color >= 0 && row.avatar_color <= 7
       ? row.avatar_color : (parseInt(id.slice(0, 2), 16) % 8);
-    const avatarUrl = typeof row.avatar_path === 'string' && rest ? rest.publicUrl('avatars', row.avatar_path) : null;
+    const avatarUrl = (typeof row.avatar_path === 'string' && rest ? rest.publicUrl('avatars', row.avatar_path) : null)
+      || legacyPhoto(row.photo);
     const status = ['online', 'idle', 'dnd', 'invisible'].includes(row.status) ? row.status : 'online';
     return {
       id,
@@ -58,7 +87,7 @@ function createUserCache({ rest } = {}) {
     for (let i = 0; i < want.length; i += CHUNK) {
       const part = want.slice(i, i + CHUNK);
       try {
-        const rows = await rest.select(`/rest/v1/profiles?select=${PROFILE_COLS}&id=in.(${part.join(',')})`);
+        const rows = await selectWithPhoto(rest, (cols) => `/rest/v1/profiles?select=${cols}&id=in.(${part.join(',')})`, PROFILE_COLS);
         upsertRows(rows);
       } catch { /* sem perfil: placeholder */ }
     }
@@ -97,4 +126,4 @@ function createUserCache({ rest } = {}) {
   return { upsertRows, ensure, get, lite, viewMap, findByUsername, clear, fromRow };
 }
 
-module.exports = { createUserCache, PROFILE_COLS, USERNAME_RE };
+module.exports = { createUserCache, PROFILE_COLS, USERNAME_RE, selectWithPhoto, legacyPhoto };

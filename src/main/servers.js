@@ -5,6 +5,7 @@
 const { appError, isUuid } = require('./rest');
 const { toMmr, normalizeInviteCode } = require('./group');
 const { validateUpload } = require('./files');
+const { selectWithPhoto, legacyPhoto } = require('./users');
 
 const ROLES = Object.freeze(['owner', 'admin', 'member']);
 const CONTROL_RE = /[\u0000-\u001f\u007f]/;
@@ -62,14 +63,17 @@ function createServersService({ rest, users, onChange = () => {} } = {}) {
 
   function emit() { try { onChange(); } catch { /* ignora */ } }
 
-  function iconUrl(path) {
-    return path ? rest.publicUrl('avatars', path) : null;
+  // Ícone do Storage; sem ele, a foto antiga do grupo (0003_social), se for válida.
+  function iconUrl(path, photo = null) {
+    return (path ? rest.publicUrl('avatars', path) : null) || legacyPhoto(photo);
   }
 
   async function refreshList() {
     const { id } = await rest.identity();
     meId = id;
-    const rows = await rest.select(`/rest/v1/group_members?select=group_id,role,joined_at,groups(id,name,owner_id,icon_color,icon_path)&user_id=eq.${id}&order=joined_at.asc`);
+    const rows = await selectWithPhoto(rest,
+      (cols) => `/rest/v1/group_members?select=group_id,role,joined_at,groups(${cols})&user_id=eq.${id}&order=joined_at.asc`,
+      'id,name,owner_id,icon_color,icon_path');
     const out = [];
     for (const r of rows) {
       const g = r && r.groups;
@@ -79,6 +83,7 @@ function createServersService({ rest, users, onChange = () => {} } = {}) {
         name: g.name.slice(0, 64),
         iconColor: iconColor(g.icon_color) ?? (parseInt(g.id.slice(0, 2), 16) % 8),
         iconPath: typeof g.icon_path === 'string' ? g.icon_path : null,
+        photo: legacyPhoto(g.photo),
         ownerId: isUuid(g.owner_id) ? g.owner_id.toLowerCase() : null,
         role: ROLES.includes(r.role) ? r.role : (g.owner_id === id ? 'owner' : 'member'),
       });
@@ -400,7 +405,7 @@ function createServersService({ rest, users, onChange = () => {} } = {}) {
 
   // ---------------- View ----------------
   function getList() {
-    return list.map((s) => ({ ...s, iconUrl: iconUrl(s.iconPath) }));
+    return list.map(({ photo, ...s }) => ({ ...s, iconUrl: iconUrl(s.iconPath, photo) }));
   }
 
   function getSelected() {
@@ -408,7 +413,7 @@ function createServersService({ rest, users, onChange = () => {} } = {}) {
     const s = list.find((x) => x.id === selectedId);
     if (!s) return null;
     return {
-      id: s.id, name: s.name, iconColor: s.iconColor, iconUrl: iconUrl(s.iconPath), role: s.role, ownerId: s.ownerId,
+      id: s.id, name: s.name, iconColor: s.iconColor, iconUrl: iconUrl(s.iconPath, s.photo), role: s.role, ownerId: s.ownerId,
       loaded: Boolean(details && details.id === s.id),
       categories: details ? details.categories.map((c) => ({ ...c })) : [],
       channels: details ? details.channels.map((c) => ({ ...c })) : [],

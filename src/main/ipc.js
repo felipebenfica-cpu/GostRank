@@ -272,7 +272,7 @@ function buildHandlers(controller, {
     [CHANNELS.updateProfile]: wrapHandler(validateProfilePayload, viaAccount(async (d) => {
       const extended = ['username', 'about', 'avatarColor'].some((k) => k in d);
       if (app && getMode() === 'v3') return app.updateProfile(d);
-      if (extended) throw new UserInputError('Atualize o banco (0003): esta função ainda não existe no servidor. Rode o 0003_discord.sql no Supabase.');
+      if (extended) throw new UserInputError('Atualize o banco (0006): esta função ainda não existe no servidor. Rode o 0006_discord.sql no Supabase.');
       return account.updateProfile(d);
     })),
     [CHANNELS.deleteAccount]: wrapHandler(validateResetPayload, viaAccount(async () => {

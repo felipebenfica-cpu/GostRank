@@ -61,7 +61,7 @@ const MESSAGES = Object.freeze({
   invalid_options: 'Opção inválida.',
   too_many_channels: 'Esse servidor chegou ao limite de canais.',
   // Gerais
-  needs_migration: 'Atualize o banco (0003): esta função ainda não existe no servidor. Rode o 0003_discord.sql no Supabase.',
+  needs_migration: 'Atualize o banco (0006): esta função ainda não existe no servidor. Rode o 0006_discord.sql no Supabase.',
   rate_limited: 'Muitas tentativas em pouco tempo. Aguarde alguns segundos e tente de novo.',
   unauthenticated: 'Sua sessão expirou. Entre novamente.',
   forbidden: 'Você não tem permissão para isso.',
@@ -85,7 +85,7 @@ function isUuid(v) {
   return typeof v === 'string' && UUID_RE.test(v);
 }
 
-/** PostgREST: função/tabela/coluna inexistente → o banco ainda não tem a migração 0003. */
+/** PostgREST: função/tabela/coluna inexistente → o banco ainda não tem a migração 0006. */
 function isMissingSchema(status, data) {
   const c = data && typeof data === 'object' && typeof data.code === 'string' ? data.code : '';
   if (['PGRST202', 'PGRST205', 'PGRST204', '42883', '42P01', '42703', 'PGRST200'].includes(c)) return true;
@@ -236,7 +236,7 @@ function createRest({ fetchImpl, supabaseUrl, anonKey, getAccessToken, timeoutMs
     return `${base}/storage/v1/object/public/${bucket}/${encodePath(objectPath)}`;
   }
 
-  /** O banco tem a 0003? true / false / null (sem resposta: tenta de novo depois). */
+  /** O banco tem a 0006? true / false / null (sem resposta: tenta de novo depois). */
   async function hasSchemaV3() {
     let r;
     try {

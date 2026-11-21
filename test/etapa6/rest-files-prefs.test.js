@@ -28,7 +28,7 @@ function fetchStub(routes) {
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 1, 0, 0, 0, 0, 200, 8, 2, 0, 0, 0]);
 
-test('rest: RPC com erro do banco vira mensagem em português; função inexistente vira "Atualize o banco (0003)"', async () => {
+test('rest: RPC com erro do banco vira mensagem em português; função inexistente vira "Atualize o banco (0006)"', async () => {
   const f = fetchStub([
     ['/rest/v1/rpc/send_friend_request', { status: 400, body: { code: 'P0001', message: 'user_not_found' } }],
     ['/rest/v1/rpc/search_users', { status: 404, body: { code: 'PGRST202', message: 'Could not find the function' } }],
@@ -36,7 +36,7 @@ test('rest: RPC com erro do banco vira mensagem em português; função inexiste
   ]);
   const rest = createRest({ fetchImpl: f, supabaseUrl: URL, anonKey: KEY, getAccessToken: async () => token() });
   await assert.rejects(rest.rpc('send_friend_request', { p_username: 'x' }), /Não encontramos ninguém/);
-  await assert.rejects(rest.rpc('search_users', {}), (e) => e.code === 'needs_migration' && /0003/.test(e.message));
+  await assert.rejects(rest.rpc('search_users', {}), (e) => e.code === 'needs_migration' && /0006/.test(e.message));
   await assert.rejects(rest.rpc('estranha', {}), (e) => e.code === 'bad_response' && !/script/.test(e.message));
   assert.equal(f.calls[0].init.redirect, 'error');
   assert.match(f.calls[0].init.headers.Authorization, /^Bearer /);

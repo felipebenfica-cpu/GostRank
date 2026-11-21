@@ -1,5 +1,7 @@
 'use strict';
-// Executa 0001 + 0002 + 0003 de verdade num Postgres temporario (se houver servidor local).
+// Executa as migracoes de verdade num Postgres temporario (se houver servidor local):
+// banco principal 0001 -> 0002 -> (dados antigos) -> 0003_social -> 0004 -> 0005 (com dados) -> 0006;
+// banco "grb" 0001 -> 0002 -> 0006 (sem as migracoes sociais).
 // Imita o que o Supabase tem: auth, extensions, publicacao supabase_realtime, realtime.messages e storage.
 const test = require('node:test');
 const assert = require('node:assert');
@@ -11,7 +13,10 @@ const { spawnSync } = require('node:child_process');
 const migDir = path.join(__dirname, '..', '..', 'supabase', 'migrations');
 const sql1 = path.join(migDir, '0001_perfis.sql');
 const sql2 = path.join(migDir, '0002_grupo.sql');
-const sql3 = path.join(migDir, '0003_discord.sql');
+const sqlSocial = path.join(migDir, '0003_social.sql');
+const sqlChat = path.join(migDir, '0004_chat_mensagens.sql');
+const sqlDm = path.join(migDir, '0005_mensagens_diretas.sql');
+const sql3 = path.join(migDir, '0006_discord.sql');
 
 const binDir = (() => {
   try {
@@ -41,8 +46,8 @@ const port = '56' + String(Math.floor(100 + Math.random() * 800));
 if (!binDir || !psqlBin) skipReason = 'Postgres local nao encontrado';
 else if (!pgcryptoOk) skipReason = 'extensao pgcrypto nao instalada no Postgres local';
 
-function exec(sqlText) {
-  const r = spawnSync(psqlBin, ['-h', dir, '-p', port, '-U', 'postgres', '-d', 'gr', '-v', 'ON_ERROR_STOP=1', '-q', '-At', '-c', sqlText],
+function exec(sqlText, db = 'gr') {
+  const r = spawnSync(psqlBin, ['-h', dir, '-p', port, '-U', 'postgres', '-d', db, '-v', 'ON_ERROR_STOP=1', '-q', '-At', '-c', sqlText],
     { encoding: 'utf8' });
   const out = (r.stdout || '').trim();
   return { ok: r.status === 0, out, last: out.split('\n').pop(), err: (r.stderr || '').trim() };
@@ -50,8 +55,8 @@ function exec(sqlText) {
 const pg = (s) => exec(s);
 const as = (uid, s) => exec(`set request.jwt.claim.sub = '${uid}'; set role authenticated; ${s}`);
 const asAnon = (s) => exec(`set request.jwt.claim.sub = ''; set role anon; ${s}`);
-function psqlFile(f) {
-  const r = spawnSync(psqlBin, ['-h', dir, '-p', port, '-U', 'postgres', '-d', 'gr', '-v', 'ON_ERROR_STOP=1', '-q', '-f', f],
+function psqlFile(f, db = 'gr') {
+  const r = spawnSync(psqlBin, ['-h', dir, '-p', port, '-U', 'postgres', '-d', db, '-v', 'ON_ERROR_STOP=1', '-q', '-f', f],
     { encoding: 'utf8' });
   return { ok: r.status === 0, err: (r.stderr || '').trim() };
 }
@@ -64,6 +69,12 @@ const D = U(4);
 const E = U(5);
 const F = U(6);
 const UUID = /^[0-9a-f-]{36}$/;
+// Pessoas das migracoes sociais paralelas (0003_social/0005).
+const P1 = U(31);
+const P2 = U(32);
+const P3 = U(33);
+const P4 = U(34);
+const PHOTO = 'data:image/jpeg;base64,/9j/4AD/2Q==';
 
 function ok(r) { assert.ok(r.ok, r.err); return r.last; }
 function expectErr(r, code) {
@@ -96,10 +107,11 @@ test.before(() => {
   if (r.status !== 0) { skipReason = 'pg_ctl start falhou: ' + (r.stderr || '').slice(0, 200); return; }
   const c = spawnSync(psqlBin, ['-h', dir, '-p', port, '-U', 'postgres', '-d', 'postgres', '-c', 'create database gr;'], { encoding: 'utf8' });
   assert.strictEqual(c.status, 0, c.stderr);
+  const roles = exec(`create role anon nologin; create role authenticated nologin;
+    create role service_role nologin bypassrls;`);
+  assert.ok(roles.ok, roles.err);
   const boot = path.join(dir, 'boot.sql');
   fs.writeFileSync(boot, `
-    create role anon nologin; create role authenticated nologin;
-    create role service_role nologin bypassrls;
     create schema auth;
     create table auth.users (id uuid primary key default gen_random_uuid(), email text);
     create function auth.uid() returns uuid language sql stable
@@ -147,8 +159,36 @@ test.before(() => {
   const code = ok(as(A, 'select code from public.create_invite()'));
   ok(as(B, `select public.join_group('${code}')`));
   oldMessage = ok(as(B, `insert into public.messages (group_id, body) values ('${oldGroup}', 'mensagem antiga') returning id`));
+
+  // Migracoes sociais paralelas (0003_social, 0004, 0005) com dados, como no banco real.
+  m = psqlFile(sqlSocial);
+  assert.ok(m.ok, '0003_social falhou: ' + m.err);
+  ok(as(P1, `select public.social_friend('send', '${P2}')`));
+  ok(as(P2, `select public.social_friend('accept', '${P1}')`));
+  ok(as(P1, `select public.social_friend('send', '${P3}')`));
+  ok(as(P4, `select public.social_friend('send', '${P1}')`));
+  ok(as(P1, `select public.social_photo('profile', '${PHOTO}')`));
+  ok(as(A, `select public.social_photo('group', '${PHOTO}')`));
+  ok(as(P2, 'select public.social_privacy(false)'));
+  m = psqlFile(sqlChat);
+  assert.ok(m.ok, '0004 falhou: ' + m.err);
+  ok(as(B, `update public.messages set body = 'mensagem antiga (editada)' where id = ${oldMessage}`));
+  m = psqlFile(sqlDm);
+  assert.ok(m.ok, '0005 falhou: ' + m.err);
+  for (const [who, text] of [[P1, 'oi'], [P2, 'fala'], [P1, 'bora jogar']]) {
+    ok(as(who, `select count(*) from public.social_dm('${who === P1 ? P2 : P1}', '${text}')`));
+  }
+  ok(pg(`update public.direct_messages set sent_at = timestamptz '2026-11-01 10:00:00+00' + (id * interval '1 minute')`));
+
   m = psqlFile(sql3);
-  assert.ok(m.ok, '0003 falhou: ' + m.err);
+  assert.ok(m.ok, '0006 falhou: ' + m.err);
+
+  // Banco sem as migracoes sociais: 0001 -> 0002 -> 0006 (duas vezes).
+  ok(pg('create database grb'));
+  for (const [label, f] of [['boot', boot], ['0001', sql1], ['0002', sql2], ['0006', sql3], ['0006 de novo', sql3]]) {
+    const r2 = psqlFile(f, 'grb');
+    assert.ok(r2.ok, `grb ${label} falhou: ` + r2.err);
+  }
 });
 
 test.after(() => {
@@ -164,7 +204,7 @@ function t(name, fn) {
   });
 }
 
-t('0003 roda de novo sem erro', () => {
+t('0006 roda de novo sem erro', () => {
   const r = psqlFile(sql3);
   assert.ok(r.ok, r.err);
 });
@@ -628,4 +668,106 @@ t('apagar conta: sai de todos os servidores sem sumir com eles', () => {
   ok(as(U(30), 'select public.delete_my_account()'));
   assert.strictEqual(pg(`select owner_id = '${U(31)}' from public.groups where id = '${g}'`).out, 't');
   assert.strictEqual(pg(`select count(*) from auth.users where id = '${U(30)}'`).out, '0');
+});
+
+// ---------------------------------------------------------------------------
+// Compatibilidade com 0003_social / 0004 / 0005
+// ---------------------------------------------------------------------------
+const rel = (x, y) => pg(`select kind from public.relationships where user_id = '${x}' and other_id = '${y}'`).out;
+const dmOf = (x, y) => pg(`select id from public.dm_channels where user_a = least('${x}'::uuid, '${y}'::uuid) and user_b = greatest('${x}'::uuid, '${y}'::uuid)`).out;
+
+t('compat: amizades e pedidos antigos viram relationships nas duas direcoes', () => {
+  assert.strictEqual(rel(P1, P2), 'friend');
+  assert.strictEqual(rel(P2, P1), 'friend');
+  assert.strictEqual(rel(P1, P3), 'pending_out');
+  assert.strictEqual(rel(P3, P1), 'pending_in');
+  assert.strictEqual(rel(P4, P1), 'pending_out');
+  assert.strictEqual(rel(P1, P4), 'pending_in');
+  // O app novo enxerga: P1 aceita P4 pela RPC nova.
+  ok(as(P1, `select public.accept_friend_request('${P4}')`));
+  assert.strictEqual(rel(P4, P1), 'friend');
+});
+
+t('compat: conversas privadas antigas viram DM com as datas originais', () => {
+  const d = dmOf(P1, P2);
+  assert.match(d, UUID);
+  assert.strictEqual(pg(`select string_agg(body, ',' order by id) from public.messages where dm_id = '${d}'`).out, 'oi,fala,bora jogar');
+  assert.strictEqual(pg(`select count(*) from public.messages m join public.direct_messages o on o.body = m.body
+    where m.dm_id = '${d}' and m.created_at = o.sent_at and m.user_id = o.sender`).out, '3');
+  assert.strictEqual(pg(`select last_message_at = (select max(sent_at) from public.direct_messages) from public.dm_channels where id = '${d}'`).out, 't');
+  assert.strictEqual(count(P1, 'public.messages', `dm_id = '${d}'`), 3);
+  assert.strictEqual(count(P3, 'public.messages', `dm_id = '${d}'`), 0, 'estranho nao le');
+  // Limite de taxa voltou a valer depois da copia.
+  assert.strictEqual(pg(`select count(*) from pg_trigger where tgrelid = 'public.messages'::regclass and tgenabled = 'D'`).out, '0');
+});
+
+t('compat: fotos, mensagem editada, um so gatilho de edicao e uma so politica de update', () => {
+  assert.strictEqual(pg(`select photo from public.profiles where id = '${P1}'`).out, PHOTO);
+  assert.strictEqual(pg(`select photo from public.groups where id = '${oldGroup}'`).out, PHOTO);
+  assert.strictEqual(pg(`select body || '|' || (edited_at is not null) from public.messages where id = ${oldMessage}`).out,
+    'mensagem antiga (editada)|true');
+  assert.strictEqual(pg(`select count(*) from pg_trigger where tgrelid = 'public.messages'::regclass and tgname = 'messages_set_edited_at'`).out, '0');
+  assert.strictEqual(pg(`select count(*) from pg_policies where tablename = 'messages' and cmd = 'UPDATE'`).out, '1');
+  // Editar continua marcando edited_at (gatilho do 0006).
+  const id = ok(as(P1, `insert into public.messages (dm_id, body) values ('${dmOf(P1, P2)}', 'antes') returning id`));
+  ok(as(P1, `update public.messages set body = 'depois' where id = ${id}`));
+  assert.strictEqual(pg(`select edited_at is not null from public.messages where id = ${id}`).out, 't');
+});
+
+t('compat: funcoes social_* do .exe anterior funcionam sobre o modelo novo', () => {
+  const people = ok(as(P1, `select string_agg(state, ',' order by id) from public.social_people(null, null)`));
+  assert.strictEqual(people, 'self,friend,outgoing,friend'); // P1, P2, P3 e P4 (aceito no teste acima)
+  // DM antiga: envia e le pela funcao velha, grava no modelo novo.
+  const r = ok(as(P2, `select string_agg(body, ',' order by id) from public.social_dm('${P1}', 'pelo exe velho')`));
+  assert.ok(r.endsWith('pelo exe velho'), r);
+  assert.strictEqual(pg(`select count(*) from public.messages where dm_id = '${dmOf(P1, P2)}' and body = 'pelo exe velho'`).out, '1');
+  expectErr(as(P3, `select * from public.social_dm('${P1}', 'oi')`), 'invalid_user');
+  // Quem escolheu nao aparecer: fora da busca para estranhos, visivel para quem ja tem relacao.
+  const s2user = pg(`select username from public.profiles where id = '${P2}'`).out;
+  assert.strictEqual(ok(as(P3, `select count(*) from public.search_users('${s2user}')`)), '0');
+  assert.strictEqual(ok(as(P1, `select count(*) from public.search_users('${s2user}')`)), '1');
+  expectErr(as(P3, `select public.social_friend('send', '${P2}')`), 'invalid_user');
+  // Pedido pelo velho, aceite pelo velho, remover pelo velho.
+  ok(as(P3, `select public.social_friend('send', '${P4}')`));
+  assert.strictEqual(rel(P4, P3), 'pending_in');
+  ok(as(P4, `select public.social_friend('accept', '${P3}')`));
+  assert.strictEqual(rel(P3, P4), 'friend');
+  ok(as(P3, `select public.social_friend('remove', '${P4}')`));
+  assert.strictEqual(rel(P3, P4), '');
+  // Bloqueio pelo app novo vale para a funcao velha.
+  ok(as(P4, `select public.block_user('${P3}')`));
+  expectErr(as(P3, `select public.social_friend('send', '${P4}')`), 'invalid_user');
+  // MMR antigo delega para o novo.
+  assert.strictEqual(ok(as(P1, `select public.can_read_social_mmr('${P1}')`)), 't');
+  assert.ok(!asAnon(`select public.social_people(null, null)`).ok, 'anon nao chama');
+});
+
+t('compat: rodar 0006 de novo nao duplica nem desfaz mudancas feitas no app novo', () => {
+  ok(as(P1, `select public.remove_friend('${P2}')`));
+  const d = dmOf(P1, P2);
+  const before = pg(`select count(*) from public.messages where dm_id = '${d}'`).out;
+  const r = psqlFile(sql3);
+  assert.ok(r.ok, r.err);
+  assert.strictEqual(rel(P1, P2), '', 'amizade removida continua removida');
+  assert.strictEqual(pg(`select count(*) from public.messages where dm_id = '${d}'`).out, before);
+  assert.strictEqual(pg(`select count(*) from public.dm_channels where user_a = least('${P1}'::uuid, '${P2}'::uuid)
+    and user_b = greatest('${P1}'::uuid, '${P2}'::uuid)`).out, '1');
+});
+
+t('banco sem 0003_social/0004/0005: 0006 cria o necessario e as funcoes antigas existem', () => {
+  const g = (sqlText) => exec(sqlText, 'grb');
+  assert.strictEqual(g(`select count(*) from information_schema.columns where table_schema = 'public'
+    and ((table_name = 'profiles' and column_name in ('photo', 'discoverable', 'username')) or (table_name = 'groups' and column_name = 'photo'))`).last, '4');
+  assert.strictEqual(g(`select count(*) from pg_proc where proname in ('social_people', 'social_friend', 'social_photo', 'social_privacy', 'social_dm', 'can_read_social_mmr')`).last, '6');
+  assert.strictEqual(g(`select to_regclass('public.friendships') is null and to_regclass('public.direct_messages') is null`).last, 't');
+  ok(g(`insert into auth.users (id, email) values ('${U(1)}', 'um@example.com'), ('${U(2)}', 'dois@example.com')`));
+  const asB = (uid, q) => exec(`set request.jwt.claim.sub = '${uid}'; set role authenticated; ${q}`, 'grb');
+  const un2 = g(`select username from public.profiles where id = '${U(2)}'`).last;
+  assert.strictEqual(asB(U(1), `select public.send_friend_request('${un2}')`).last, 'sent');
+  assert.strictEqual(asB(U(2), `select string_agg(state, ',' order by id) from public.social_people(null, null)`).last, 'incoming,self');
+  assert.ok(asB(U(2), `select public.social_friend('accept', '${U(1)}')`).ok);
+  const sent = asB(U(1), `select body from public.social_dm('${U(2)}', 'oi grb')`);
+  assert.ok(sent.ok, sent.err);
+  assert.strictEqual(sent.last, 'oi grb');
+  assert.ok(asB(U(1), `select public.social_photo('profile', '${PHOTO}')`).ok);
 });

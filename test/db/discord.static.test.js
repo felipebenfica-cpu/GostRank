@@ -1,11 +1,11 @@
 'use strict';
-// Analise estatica do 0003_discord.sql (roda mesmo sem Postgres local).
+// Analise estatica do 0006_discord.sql (roda mesmo sem Postgres local).
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const sql = fs.readFileSync(path.join(__dirname, '..', '..', 'supabase', 'migrations', '0003_discord.sql'), 'utf8');
+const sql = fs.readFileSync(path.join(__dirname, '..', '..', 'supabase', 'migrations', '0006_discord.sql'), 'utf8');
 const code = sql.split('\n').map((l) => l.replace(/--.*$/, '')).join('\n').toLowerCase().replace(/\s+/g, ' ');
 
 const fnBodies = code.match(/create or replace function public\.\w+\(.*?\$\$;/g) || [];

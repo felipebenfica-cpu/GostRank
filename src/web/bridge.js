@@ -1,92 +1,195 @@
 'use strict';
 
+// Versão web do Ghost Rank (Netlify): monta no navegador a MESMA fiação do app Electron
+// (services.js + controller + handlers validados do ipc.js) e expõe window.ghostRank com o MESMO
+// preload.js — o esbuild troca 'electron' por ./electron-shim.js. Assim a tela não sabe se está no
+// Electron ou no navegador, e a lista de métodos nunca diverge.
+//
+// Diferenças da plataforma: armazenamento em localStorage, notificação pela Notification API,
+// links em nova aba, compartilhar tela pelo seletor do próprio navegador, ausente por inatividade.
+
+const shim = require('./electron-shim');
 const config = require('../../config.public.json');
-const { createAuthClient } = require('../main/auth');
-const { createSessionManager } = require('../main/session');
-const { createAccountService } = require('../main/account');
-const { createProfileClient } = require('../main/profile');
-const { createGroupClient, createGroupService } = require('../main/group');
-const { createChatClient, createChatFeed } = require('../main/chat');
-const { createSocialClient } = require('../main/social');
-const { createSteamClient } = require('../main/steam');
-const { createVoiceClient } = require('../main/voice');
+const { createAppServices } = require('../main/services');
 const { createController } = require('../main/controller');
 const { createOpenDotaClient } = require('../main/opendota');
+const { buildHandlers } = require('../main/ipc');
+const { normalizeSupabaseUrl, isValidAnonKey } = require('../main/supabase-url');
 
-function browserStore(storage, name) {
-  const key = 'ghostrank.' + name;
+const PREFIX = 'ghostrank.';
+
+/** Store {load, save, clear} em localStorage; nunca lança (modo privado/cheio fica em memória). */
+function browserStore(name) {
+  const key = PREFIX + name;
+  let memory = null;
   return {
-    load: () => JSON.parse(storage.getItem(key)),
-    save: (value) => storage.setItem(key, JSON.stringify(value)),
-    clear: () => storage.removeItem(key),
+    load() {
+      try {
+        const raw = window.localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : memory;
+      } catch { return memory; }
+    },
+    save(value) {
+      memory = value;
+      try { window.localStorage.setItem(key, JSON.stringify(value)); } catch { /* fica em memória */ }
+    },
+    clear() {
+      memory = null;
+      try { window.localStorage.removeItem(key); } catch { /* ignora */ }
+    },
   };
 }
 
-const listeners = new Set();
-const auth = createAuthClient(config);
-const session = createSessionManager({ store: browserStore(sessionStorage, 'session'), auth });
-const common = { ...config, getAccessToken: async () => (await session.get())?.accessToken };
-const social = createSocialClient(common);
-const chat = createChatFeed({ client: createChatClient(common), onChange: emit });
-const group = createGroupService({
-  client: createGroupClient(common), isSignedIn: () => !!session.peek(),
-  chatFeed: chat, onChange: emit, getSummary: () => controller.getSummary(),
-});
-const account = createAccountService({
-  config, auth, session, profile: createProfileClient(common), onChange: emit,
-  onSessionChange: (signedIn) => signedIn ? group.refresh({ quiet: true }) : group.clear(),
-});
-const steam = createSteamClient({ ...common, openExternal: (url) => window.location.assign(url) });
-const voice = createVoiceClient(common);
-const controller = createController({
-  client: createOpenDotaClient(), store: browserStore(localStorage, 'tracker'),
-  heroesStore: browserStore(localStorage, 'heroes'),
-  getAuthView: account.getAuthView, getGroupView: group.getView, getChatView: chat.getView,
-  getVoiceView: () => ({ available: !!window.LivekitClient && group.hasGroup() }),
-  publishSnapshot: group.publishSnapshot, onUpdate: emit,
-});
-
-function emit() {
-  const view = controller.getView();
-  for (const listener of listeners) listener(view);
+function safeConfig(c) {
+  if (!c || !normalizeSupabaseUrl(c.supabaseUrl) || !isValidAnonKey(c.anonKey)) return null;
+  return { supabaseUrl: normalizeSupabaseUrl(c.supabaseUrl), anonKey: c.anonKey };
 }
 
-function action(fn, raw = false) {
-  return async (...args) => {
+// ---------------- Inatividade (status "ausente" automático) ----------------
+let lastInput = Date.now();
+const markInput = () => { lastInput = Date.now(); };
+for (const ev of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart']) {
+  window.addEventListener(ev, markInput, { passive: true, capture: true });
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) markInput(); });
+const getIdleSeconds = () => Math.max(0, Math.floor((Date.now() - lastInput) / 1000));
+const isFocused = () => !document.hidden && document.hasFocus();
+
+// ---------------- Links externos (nova aba, sem acesso a esta página) ----------------
+function openExternal(url) {
+  const w = window.open('', '_blank');
+  if (!w) return Promise.reject(new Error('Permita pop-ups deste site para abrir o link.'));
+  try { w.opener = null; } catch { /* ignora */ }
+  w.location.href = url;
+  return Promise.resolve();
+}
+
+// ---------------- Notificações ----------------
+let services = null;
+function askNotificationPermissionOnce() {
+  const ask = () => {
+    window.removeEventListener('pointerdown', ask, true);
     try {
-      const result = await fn(...args);
-      return raw ? { ...result, ok: true } : { ok: true, view: controller.getView() };
-    } catch (error) {
-      const safe = ['UserInputError', 'AuthError'].includes(error.name);
-      return { ok: false, error: safe ? error.message : 'Não foi possível concluir. Tente novamente.' };
-    }
+      if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
+    } catch { /* navegador sem suporte */ }
   };
+  window.addEventListener('pointerdown', ask, true);
+}
+function notify({ title, body, target, silent }) {
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const n = new Notification(String(title).slice(0, 120), { body: String(body).slice(0, 200), silent: Boolean(silent), tag: 'ghostrank' });
+    n.onclick = () => {
+      try { window.focus(); } catch { /* ignora */ }
+      n.close();
+      if (services) {
+        services.openTarget(target).finally(() => shim.send('gr:notificationClick', target));
+      }
+    };
+  } catch { /* notificação é opcional */ }
 }
 
-window.ghostRank = Object.freeze({
-  getView: action(() => {}), signUp: action(account.signUp), signIn: action(account.signIn),
-  signOut: action(account.signOut), recover: action(account.recover),
-  deleteAccount: action(async () => { await account.deleteAccount(); controller.reset(); }),
-  updateProfile: action(account.updateProfile), linkSteam: action(steam.startLink),
-  setup: action(controller.setup), sync: action(() => controller.sync({ manual: true })),
-  correctMmr: action((mmr) => controller.correctMmr({ mmr })),
-  updateSettings: action(controller.updateSettings), reset: action(controller.reset),
-  createGroup: action(group.create), joinGroup: action(group.join), leaveGroup: action(group.leave),
-  refreshGroup: action(group.refresh), removeMember: action(group.remove), createInvite: action(group.invite, true),
-  social: action(social, true), sendMessage: action(chat.send),
-  editMessage: action(chat.edit), deleteMessage: action(chat.remove), voiceToken: action(voice.getToken, true),
-  listScreenSources: action(() => ({ sources: [{ id: 'screen:browser', name: 'Escolher tela ou janela no navegador', thumbnail: null }] }), true),
-  pickScreenSource: action(() => ({}), true),
-  onUpdate(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+// ---------------- Contador de não lidas (título da aba + badge do PWA) ----------------
+const BASE_TITLE = document.title || 'Ghost Rank';
+let lastBadge = -1;
+function updateBadge() {
+  if (!services) return;
+  let n = 0;
+  try { n = services.badgeCount(); } catch { n = 0; }
+  if (n === lastBadge) return;
+  lastBadge = n;
+  document.title = n > 0 ? `(${n}) ${BASE_TITLE}` : BASE_TITLE;
+  try {
+    if (n > 0 && navigator.setAppBadge) navigator.setAppBadge(n).catch(() => {});
+    else if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
+  } catch { /* ignora */ }
+}
+
+// ---------------- Montagem ----------------
+let controller = null;
+const pushUpdate = () => { if (controller) shim.send('gr:update', controller.getView()); };
+
+const cfg = safeConfig(config);
+try {
+  services = createAppServices({
+    config: cfg,
+    fetchImpl: (...a) => window.fetch(...a),
+    WebSocketImpl: typeof window.WebSocket === 'function' ? window.WebSocket : null,
+    sessionStore: browserStore('session'),
+    prefsStore: browserStore('prefs'),
+    notify,
+    openExternal,
+    getIdleSeconds,
+    isFocused,
+    getSummary: () => (controller ? controller.getSummary() : null),
+    onChange: () => { pushUpdate(); updateBadge(); },
+  });
+} catch {
+  services = createAppServices({ config: null, onChange: () => pushUpdate() });
+}
+
+controller = createController({
+  client: createOpenDotaClient({ fetchImpl: (...a) => window.fetch(...a) }),
+  store: browserStore('tracker'),
+  heroesStore: browserStore('heroes'),
+  getAuthView: () => services.account.getAuthView(),
+  getGroupView: () => services.group.getView(),
+  getChatView: () => (services.chatFeed ? services.chatFeed.getView() : null),
+  getVoiceView: () => ({ available: Boolean(window.LivekitClient && services.voiceAvailable()) }),
+  publishSnapshot: (summary) => services.group.publishSnapshot(summary),
+  getExtraView: () => services.getExtraView(),
+  onUpdate: (view) => shim.send('gr:update', view),
 });
 
-function refresh() {
-  if (document.hidden || !session.peek()) return;
-  group.refresh({ quiet: true });
-  account.refreshProfile();
+const steamService = services.steam ? { startLink: () => services.steam.startLink() } : null;
+// O seletor de tela é o do navegador (getDisplayMedia); a lista do Electron não existe aqui.
+const picker = { listSources: async () => [], pick: () => true };
+
+shim.setHandlers(buildHandlers(controller, {
+  account: services.account,
+  session: services.session,
+  group: services.group,
+  chatFeed: services.chatFeed,
+  voice: services.voice,
+  picker,
+  steam: steamService,
+  app: services.available ? services.app : null,
+  getMode: () => services.getMode(),
+}));
+
+shim.setExposeHook((api) => ({
+  ...api,
+  listScreenSources: async () => ({ ok: true, browserPicker: true, sources: [] }),
+  pickScreenSource: async () => ({ ok: true }),
+}));
+
+// O mesmo preload do Electron: define window.ghostRank com todos os métodos.
+require('../preload/preload');
+
+// ---------------- Ciclo de vida ----------------
+askNotificationPermissionOnce();
+document.addEventListener('visibilitychange', () => {
+  try { if (services.chatFeed && services.chatFeed.setFocused) services.chatFeed.setFocused(!document.hidden); } catch { /* ignora */ }
+  if (!document.hidden) pushUpdate();
+});
+window.addEventListener('focus', () => {
+  try { if (services.account && services.account.isSignedIn && services.account.isSignedIn()) services.account.refreshProfile().catch(() => {}); } catch { /* ignora */ }
+});
+window.addEventListener('beforeunload', () => {
+  try { services.stop(); } catch { /* ignora */ }
+});
+
+// Grupo antigo (banco sem a 0003) e perfil: recarrega a cada 30 s com a aba visível.
+function refreshQuiet() {
+  if (document.hidden) return;
+  try {
+    if (services.account.isSignedIn && services.account.isSignedIn()) services.group.refresh({ quiet: true }).catch(() => {});
+  } catch { /* ignora */ }
 }
-document.addEventListener('visibilitychange', () => { chat.setFocused(!document.hidden); refresh(); });
-setInterval(refresh, 30000);
-chat.setFocused(!document.hidden);
+setInterval(refreshQuiet, 30000);
+try { if (services.chatFeed && services.chatFeed.setFocused) services.chatFeed.setFocused(!document.hidden); } catch { /* ignora */ }
+
 controller.start();
-refresh();
+try { if (services.account.refreshProfile) services.account.refreshProfile().catch(() => {}); } catch { /* sem conta */ }
+services.start();
+refreshQuiet();

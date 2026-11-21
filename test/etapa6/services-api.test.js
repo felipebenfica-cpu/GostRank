@@ -168,14 +168,14 @@ test('services v3: mensagem pelo tempo real com janela sem foco vira notificaç�
   e.svc.stop();
 });
 
-test('services legacy (sem 0003): app antigo segue; ações novas pedem "Atualize o banco (0003)"', async () => {
+test('services legacy (sem 0006): app antigo segue; ações novas pedem "Atualize o banco (0006)"', async () => {
   const e = await boot('legacy');
   assert.equal(e.svc.getMode(), 'legacy');
   const r = await e.call(CHANNELS.searchUsers, { query: 'lua' });
   assert.equal(r.ok, false);
-  assert.match(r.error, /Atualize o banco \(0003\)/);
+  assert.match(r.error, /Atualize o banco \(0006\)/);
   const r2 = await e.call(CHANNELS.updateProfile, { username: 'novo' });
-  assert.match(r2.error, /0003/);
+  assert.match(r2.error, /0006/);
   const v = (await e.call(CHANNELS.getView)).view;
   assert.equal(v.schema, 'legacy');
   assert.deepEqual(v.servers, []);

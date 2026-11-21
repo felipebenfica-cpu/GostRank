@@ -24,7 +24,7 @@ O projeto Supabase real (ref `jdipignyikikagjvynve`) NÃO está acessível pelas
 
 Fora desta etapa (listar para o Felipe depois): tópicos/threads, fóruns, palco, bots/webhooks, eventos, soundboard, stickers, descoberta de servidores, permissões granulares por canal.
 
-## 1. Banco (frente DB — `supabase/migrations/0003_discord.sql`)
+## 1. Banco (frente DB — `supabase/migrations/0006_discord.sql`)
 
 Migração aditiva, roda de novo sem erro, preserva dados atuais (grupo existente vira servidor com `#geral` e `Geral`; mensagens antigas vão para `#geral`; dono vira `role='owner'`).
 

@@ -4,8 +4,8 @@
 // preferências, SEM Electron. O main.js (Electron) e a versão web (onda 2) só injetam as
 // dependências da plataforma: fetch, WebSocket, stores, notificação, abrir link, tempo ocioso, foco.
 //
-// Modo do banco: 'v3' (com a 0003_discord.sql) usa os serviços novos; 'legacy' (sem a 0003) usa o
-// grupo único da Etapa 4 e as ações novas respondem "Atualize o banco (0003)".
+// Modo do banco: 'v3' (com a 0006_discord.sql) usa os serviços novos; 'legacy' (sem a 0006) usa o
+// grupo único da Etapa 4 e as ações novas respondem "Atualize o banco (0006)".
 
 const { createAuthClient } = require('./auth');
 const { createSessionManager } = require('./session');
