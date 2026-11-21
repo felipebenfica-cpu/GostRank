@@ -4,7 +4,6 @@
   'use strict';
 
   var bridge = window.ghostRank;
-  var voice = window.GhostVoice || null;
   var view = null;
   var syncing = false; // sincronização manual em andamento nesta tela
 
@@ -56,11 +55,13 @@
     dlgReset: $('dlg-reset'),
     formReset: $('form-reset'),
     resetError: $('reset-error'),
-    accountBar: $('account-bar'),
-    accountNote: $('account-unconfigured'),
     btnSignin: $('btn-signin'),
     btnAccount: $('btn-account'),
-    accountName: $('account-name')
+    accountName: $('account-name'),
+    userStatus: $('user-status'),
+    userAvatar: $('user-avatar'),
+    userInitials: $('user-initials'),
+    userDot: $('user-dot')
   };
 
   /* ---------- utilidades ---------- */
@@ -177,9 +178,11 @@
 
     if (configured && view.summary) renderDashboard();
     renderAccount();
-    renderTabs();
     renderGroup();
-    if (voice) voice.update(view);
+    renderNav();
+    if (voiceReady()) {
+      try { window.GhostVoice.update(view); } catch (e) { /* a voz não derruba a tela */ }
+    }
     updateTimers();
   }
 
@@ -573,18 +576,32 @@
 
   function renderAccount() {
     var a = authInfo();
-    show(els.accountBar, !!a);
-    if (!a) return;
-    show(els.accountNote, a.status === 'unconfigured');
-    show(els.btnSignin, a.status === 'signed_out');
-    var signedIn = a.status === 'signed_in';
+    var status = a ? a.status : null;
+    var signedIn = status === 'signed_in';
+    show(els.btnSignin, status === 'signed_out');
     show(els.btnAccount, signedIn);
+    show(els.userDot, signedIn);
+    var name;
     if (signedIn) {
-      var name = accountLabel(a);
-      els.accountName.textContent = name;
+      name = accountLabel(a);
       els.btnAccount.setAttribute('aria-label', 'Minha conta, ' + name);
-      els.btnAccount.title = name;
+      els.userStatus.textContent = 'online';
+    } else if (status === 'unconfigured') {
+      name = 'Ghost Rank';
+      els.userStatus.textContent = 'Contas ainda não configuradas';
+    } else if (status === 'signed_out') {
+      name = 'Sem conta';
+      els.userStatus.textContent = 'Modo local';
+    } else {
+      name = 'Ghost Rank';
+      els.userStatus.textContent = '';
     }
+    els.accountName.textContent = name;
+    els.accountName.title = name;
+    els.userInitials.textContent = signedIn ? initials(name) : '';
+    els.userAvatar.dataset.tone = signedIn ? String(toneFor(a.email || name)) : '0';
+    els.userAvatar.classList.toggle('has-initials', signedIn);
+    if (!a) return;
     var linked = !!a.steamLinked;
     show($('steam-linked'), signedIn && linked);
     show($('btn-link-steam'), signedIn && !linked);
@@ -877,69 +894,7 @@
     });
   });
 
-  /* ---------- abas ---------- */
-
-  var tabs = {
-    mmr: { tab: $('tab-mmr'), panel: $('panel-mmr') },
-    group: { tab: $('tab-group'), panel: $('panel-group') }
-  };
-  var tabOrder = ['mmr', 'group'];
-  var currentTab = 'mmr';
-
-  function groupAllowed() {
-    var a = authInfo();
-    return !!(a && a.status === 'signed_in');
-  }
-
-  function selectTab(name, focus) {
-    if (name === 'group' && !groupAllowed()) return;
-    var changed = currentTab !== name;
-    currentTab = name;
-    tabOrder.forEach(function (k) {
-      var on = k === name;
-      tabs[k].tab.setAttribute('aria-selected', on ? 'true' : 'false');
-      tabs[k].tab.tabIndex = on ? 0 : -1;
-      show(tabs[k].panel, on);
-    });
-    if (focus) tabs[name].tab.focus();
-    if (changed && name === 'group') scrollChatToEnd();
-  }
-
-  function renderTabs() {
-    show($('tabs-bar'), true);
-    var allowed = groupAllowed();
-    var t = tabs.group.tab;
-    if (allowed) {
-      t.removeAttribute('aria-disabled');
-      t.removeAttribute('aria-describedby');
-    } else {
-      t.setAttribute('aria-disabled', 'true');
-      t.setAttribute('aria-describedby', 'tab-group-hint');
-    }
-    show($('tab-group-hint'), !allowed);
-    if (!allowed && currentTab === 'group') selectTab('mmr', false);
-    else selectTab(currentTab, false);
-  }
-
-  tabOrder.forEach(function (k, i) {
-    var t = tabs[k].tab;
-    t.addEventListener('click', function () { selectTab(k, false); });
-    t.addEventListener('keydown', function (ev) {
-      var next = null;
-      if (ev.key === 'ArrowRight') next = (i + 1) % tabOrder.length;
-      else if (ev.key === 'ArrowLeft') next = (i - 1 + tabOrder.length) % tabOrder.length;
-      else if (ev.key === 'Home') next = 0;
-      else if (ev.key === 'End') next = tabOrder.length - 1;
-      if (next === null) return;
-      ev.preventDefault();
-      var name = tabOrder[next];
-      // aba desabilitada recebe foco (para ouvir a dica), mas não abre
-      if (name === 'group' && !groupAllowed()) tabs[name].tab.focus();
-      else selectTab(name, true);
-    });
-  });
-
-  /* ---------- grupo ---------- */
+  /* ---------- utilidades da janela (avatares, ícones) ---------- */
 
   var INVITE_ALPHABET = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{10}$/;
   var SVG_NS = 'http://www.w3.org/2000/svg';
@@ -948,7 +903,10 @@
     unreachable: [['path', { d: 'M12 3 2.5 20h19L12 3z' }], ['line', { x1: 12, y1: 10, x2: 12, y2: 14.5 }], ['line', { x1: 12, y1: 17.4, x2: 12, y2: 17.5 }]],
     insufficient_data: [['circle', { cx: 12, cy: 12, r: 9 }], ['line', { x1: 12, y1: 11, x2: 12, y2: 16 }], ['line', { x1: 12, y1: 7.9, x2: 12, y2: 8 }]],
     goal_reached: [['circle', { cx: 12, cy: 12, r: 9 }], ['polyline', { points: '8 12.5 11 15.5 16 9.5' }]],
-    hidden: [['path', { d: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z' }], ['circle', { cx: 12, cy: 12, r: 3 }], ['line', { x1: 4, y1: 4, x2: 20, y2: 20 }]]
+    hidden: [['path', { d: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z' }], ['circle', { cx: 12, cy: 12, r: 3 }], ['line', { x1: 4, y1: 4, x2: 20, y2: 20 }]],
+    crown: [['path', { d: 'M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5L3 8z' }]],
+    micOff: [['path', { d: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z' }], ['path', { d: 'M5 11a7 7 0 0 0 14 0' }], ['line', { x1: 12, y1: 18, x2: 12, y2: 21 }], ['line', { x1: 3, y1: 3, x2: 21, y2: 21 }]],
+    deafened: [['path', { d: 'M3 14v-2a9 9 0 0 1 18 0v2' }], ['path', { d: 'M3 14h3v6H4a1 1 0 0 1-1-1v-5z' }], ['path', { d: 'M18 14h3v5a1 1 0 0 1-1 1h-2v-6z' }], ['line', { x1: 3, y1: 3, x2: 21, y2: 21 }]]
   };
   var STATUS_LABEL = {
     goal_reached: 'Meta alcançada',
@@ -973,14 +931,282 @@
     return svg;
   }
 
+  // Iniciais: primeira letra das duas primeiras palavras ("Lua<Cheia>" -> "LC", "Eco" -> "E"); igual ao voice.js
+  function initials(name) {
+    var words = String(name || '').replace(/[^\p{L}\p{N}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return '?';
+    var a = Array.from(words[0])[0] || '';
+    var b = words.length > 1 ? (Array.from(words[1])[0] || '') : '';
+    return (a + b).toUpperCase();
+  }
+
+  // Tom do avatar (0 a 5) estável por pessoa
+  function toneFor(key) {
+    var s = String(key || '');
+    var h = 0;
+    for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return h % 6;
+  }
+
+  function avatar(name, key, size) {
+    var a = el('span', 'avatar avatar-' + (size || 'sm'));
+    a.dataset.tone = String(toneFor(key || name));
+    a.setAttribute('aria-hidden', 'true');
+    a.appendChild(el('span', 'avatar-initials', initials(name)));
+    return a;
+  }
+
+  /* ---------- navegação (trilho, canais, área principal) ---------- */
+
+  var app = $('app');
+  var nav = {
+    railHome: $('rail-home'),
+    railGroupItem: $('rail-group-item'),
+    railGroup: $('rail-group'),
+    railGroupInitials: $('rail-group-initials'),
+    railAdd: $('rail-add'),
+    sidebar: $('sidebar'),
+    sidebarHomeTitle: $('sidebar-home-title'),
+    groupHead: $('group-head'),
+    groupChannels: $('group-channels'),
+    rankingItem: $('ch-ranking-item'),
+    sidebarCta: $('sidebar-cta'),
+    sidebarAdd: $('sidebar-add'),
+    head: $('channel-head'),
+    title: $('channel-title'),
+    topic: $('channel-topic'),
+    btnSidebar: $('btn-sidebar'),
+    btnMembers: $('btn-members'),
+    members: $('members'),
+    scrim: $('scrim'),
+    main: $('conteudo')
+  };
+  var channels = {
+    chat: $('ch-chat'),
+    voice: $('ch-voice'),
+    mmr: $('ch-mmr'),
+    ranking: $('ch-ranking')
+  };
+  var views = {
+    mmr: $('view-mmr'),
+    chat: $('view-chat'),
+    voice: $('view-voice'),
+    ranking: $('view-ranking')
+  };
+  var GROUP_VIEWS = { chat: 1, voice: 1, ranking: 1 };
+  var currentView = 'mmr';
+  var lastGroupView = 'chat';
+  var sidebarOpen = false;   // gaveta da barra lateral (< 700px)
+  var membersOpen = false;   // lista de membros sobreposta (< 1100px)
+  var membersHidden = false; // lista de membros escondida pelo usuário (>= 1100px)
+  var mqWide = window.matchMedia ? window.matchMedia('(min-width: 1100px)') : null;
+  var mqNarrow = window.matchMedia ? window.matchMedia('(max-width: 699.98px)') : null;
+
+  function isWide() { return mqWide ? mqWide.matches : true; }
+  function isNarrow() { return mqNarrow ? mqNarrow.matches : false; }
+
+  function groupAllowed() {
+    var a = authInfo();
+    return !!(a && a.status === 'signed_in');
+  }
+
+  function viewTitle(name) {
+    if (name === 'chat') return 'chat';
+    if (name === 'voice') return 'Sala de voz';
+    if (name === 'ranking') return 'Ranking dos fantasmas';
+    return 'Meu MMR';
+  }
+
+  function viewTopic(name) {
+    var gr = groupInfo();
+    if (name === 'mmr') return 'Seu MMR partida a partida, até a meta';
+    if (!gr) return '';
+    if (name === 'voice') return 'Voz e tela compartilhada · ' + (gr.name || 'Grupo');
+    return groupMeta(gr);
+  }
+
+  function selectView(name, opts) {
+    opts = opts || {};
+    if (GROUP_VIEWS[name] && !groupInfo()) name = 'mmr';
+    var changed = currentView !== name;
+    currentView = name;
+    if (GROUP_VIEWS[name]) lastGroupView = name;
+    Object.keys(views).forEach(function (k) { show(views[k], k === name); });
+    Object.keys(channels).forEach(function (k) {
+      if (k === name) channels[k].setAttribute('aria-current', 'page');
+      else channels[k].removeAttribute('aria-current');
+    });
+    app.dataset.view = name;
+    nav.head.dataset.view = name;
+    nav.title.textContent = viewTitle(name);
+    nav.topic.textContent = viewTopic(name);
+    show(nav.topic, !!nav.topic.textContent);
+    renderRail();
+    renderMembersVisibility();
+    if (opts.closeDrawer !== false) setSidebarOpen(false, false);
+    if (name === 'chat' && changed) {
+      chatState.forceScroll = true;
+      scrollChatToEnd();
+    }
+    if (opts.focus === 'title') nav.title.focus();
+    else if (opts.focus === 'input' && name === 'chat') c.input.focus();
+  }
+
+  function renderRail() {
+    var inGroup = !!GROUP_VIEWS[currentView];
+    setRailCurrent(nav.railHome, !inGroup);
+    setRailCurrent(nav.railGroup, inGroup);
+  }
+
+  function setRailCurrent(btn, on) {
+    var item = btn.closest('.rail-item');
+    if (on) btn.setAttribute('aria-current', 'page');
+    else btn.removeAttribute('aria-current');
+    if (item) item.classList.toggle('is-current', on);
+  }
+
+  function renderNav() {
+    var gr = groupInfo();
+    show(nav.railGroupItem, !!gr);
+    show(nav.groupHead, !!gr);
+    show(nav.sidebarHomeTitle, !gr);
+    show(nav.groupChannels, !!gr);
+    show(nav.rankingItem, !!gr);
+    show(nav.sidebarCta, !gr && groupAllowed());
+    // controles de voz só fazem sentido com grupo
+    show(voiceUi.userControls, !!gr);
+    if (gr) {
+      var gname = gr.name || 'Grupo';
+      nav.railGroupInitials.textContent = initials(gname);
+      nav.railGroup.setAttribute('aria-label', 'Grupo ' + gname);
+      nav.railGroup.dataset.tip = gname;
+      nav.railGroup.dataset.tone = String(toneFor(gr.id || gname));
+    } else {
+      closeGroupMenu(false);
+    }
+    selectView(currentView, { closeDrawer: false });
+    renderVoiceChannel();
+  }
+
+  // Cliques nos canais e no trilho
+  Object.keys(channels).forEach(function (k) {
+    channels[k].addEventListener('click', function () {
+      if (k === 'voice') {
+        selectView('voice');
+        joinVoice();
+        return;
+      }
+      selectView(k, { focus: k === 'chat' && !isNarrow() ? 'input' : null });
+    });
+  });
+
+  nav.railHome.addEventListener('click', function () { selectView('mmr'); });
+  nav.railGroup.addEventListener('click', function () { selectView(lastGroupView); });
+  nav.railAdd.addEventListener('click', function () { openGroupDialog(nav.railAdd); });
+  nav.sidebarAdd.addEventListener('click', function () { openGroupDialog(nav.sidebarAdd); });
+
+  // Setas para cima/baixo andam entre os canais visíveis
+  nav.sidebar.addEventListener('keydown', function (ev) {
+    var t = ev.target;
+    if (!t || !t.classList || !t.classList.contains('channel')) return;
+    if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
+    var list = Array.prototype.filter.call(nav.sidebar.querySelectorAll('.channel'), function (b) { return !b.closest('[hidden]'); });
+    var i = list.indexOf(t);
+    if (i < 0) return;
+    ev.preventDefault();
+    var next = ev.key === 'ArrowDown' ? (i + 1) % list.length : (i - 1 + list.length) % list.length;
+    list[next].focus();
+  });
+
+  /* Gaveta da barra lateral (< 700px) e lista de membros (< 1100px) */
+
+  function setSidebarOpen(open, focus) {
+    open = !!open && isNarrow();
+    if (sidebarOpen === open) return;
+    sidebarOpen = open;
+    app.dataset.sidebar = open ? 'open' : 'closed';
+    nav.btnSidebar.setAttribute('aria-expanded', open ? 'true' : 'false');
+    nav.btnSidebar.setAttribute('aria-label', open ? 'Fechar canais' : 'Abrir canais');
+    renderScrim();
+    if (open && focus) {
+      var cur = nav.sidebar.querySelector('.channel[aria-current="page"]') || nav.sidebar.querySelector('.channel');
+      if (cur) cur.focus();
+    } else if (!open && focus) {
+      nav.btnSidebar.focus();
+    }
+  }
+
+  function membersAvailable() {
+    return !!groupInfo() && !!GROUP_VIEWS[currentView];
+  }
+
+  function membersVisible() {
+    if (!membersAvailable()) return false;
+    return isWide() ? !membersHidden : membersOpen;
+  }
+
+  function renderMembersVisibility() {
+    var avail = membersAvailable();
+    if (!avail) membersOpen = false;
+    var visible = membersVisible();
+    show(nav.members, visible);
+    show(nav.btnMembers, avail);
+    nav.btnMembers.setAttribute('aria-pressed', visible ? 'true' : 'false');
+    nav.btnMembers.setAttribute('aria-label', visible ? 'Esconder lista de membros' : 'Mostrar lista de membros');
+    app.dataset.members = visible ? (isWide() ? 'docked' : 'overlay') : 'hidden';
+    renderScrim();
+  }
+
+  function renderScrim() {
+    var overlayMembers = membersOpen && !isWide() && membersAvailable();
+    show(nav.scrim, sidebarOpen || overlayMembers);
+    nav.main.inert = sidebarOpen;
+  }
+
+  nav.btnSidebar.addEventListener('click', function () { setSidebarOpen(!sidebarOpen, true); });
+
+  nav.btnMembers.addEventListener('click', function () {
+    if (isWide()) membersHidden = !membersHidden;
+    else membersOpen = !membersOpen;
+    renderMembersVisibility();
+    if (!isWide() && membersOpen) {
+      var first = nav.members.querySelector('.member');
+      if (first) first.focus();
+    }
+  });
+
+  nav.scrim.addEventListener('click', function () {
+    if (sidebarOpen) setSidebarOpen(false, false);
+    if (membersOpen) { membersOpen = false; renderMembersVisibility(); }
+  });
+
+  function onLayoutChange() {
+    if (!isNarrow() && sidebarOpen) setSidebarOpen(false, false);
+    renderMembersVisibility();
+  }
+  [mqWide, mqNarrow].forEach(function (mq) {
+    if (!mq) return;
+    if (typeof mq.addEventListener === 'function') mq.addEventListener('change', onLayoutChange);
+    else if (typeof mq.addListener === 'function') mq.addListener(onLayoutChange);
+  });
+
+  /* ---------- grupo ---------- */
+
   var g = {
+    dlgGroup: $('dlg-group'),
     none: $('group-none'),
-    view: $('group-view'),
+    signinHint: $('group-signin-hint'),
+    signinHintText: $('group-signin-hint-text'),
+    already: $('group-already'),
+    btnGroupSignin: $('btn-group-signin'),
     name: $('group-name'),
-    meta: $('group-meta'),
+    menuBtn: $('group-menu-btn'),
+    menu: $('group-menu'),
     error: $('group-error'),
     btnInvite: $('btn-invite'),
     btnLeave: $('btn-leave'),
+    dlgInvite: $('dlg-invite'),
+    inviteLoading: $('invite-loading'),
     inviteBox: $('invite-box'),
     inviteCode: $('invite-code'),
     inviteExpiry: $('invite-expiry'),
@@ -1004,11 +1230,28 @@
     formRemove: $('form-remove'),
     removeTitle: $('dlg-remove-title'),
     removeError: $('remove-error'),
-    removeSubmit: $('remove-submit')
+    removeSubmit: $('remove-submit'),
+    membersVoiceSection: $('members-voice-section'),
+    membersVoiceTitle: $('members-voice-title'),
+    membersVoice: $('members-voice'),
+    membersAllTitle: $('members-all-title'),
+    membersAllSection: $('members-all-section'),
+    membersList: $('members-list'),
+    chatWelcomeText: $('chat-welcome-text'),
+    dlgProfile: $('dlg-profile'),
+    profileAvatar: $('profile-avatar'),
+    profileInitials: $('profile-initials'),
+    profileName: $('profile-name'),
+    profileTags: $('profile-tags'),
+    profileMmr: $('profile-mmr'),
+    profileRemove: $('profile-remove')
   };
   var lastGroupId = null;
   var removeTarget = null;
   var removeReturnFocus = null;
+  var profileTarget = null;
+  var profileReturnFocus = null;
+  var groupDialogReturn = null;
 
   function groupInfo() {
     var gr = view && view.group;
@@ -1019,30 +1262,46 @@
     return (m && typeof m.displayName === 'string' && m.displayName) ? m.displayName : 'Fantasma sem nome';
   }
 
+  function groupMembers(gr) {
+    return gr && Array.isArray(gr.members) ? gr.members : [];
+  }
+
+  function groupMeta(gr) {
+    var n = groupMembers(gr).length;
+    return n + ' de 10 ' + (n === 1 ? 'membro' : 'membros') + (gr.isOwner ? ' · você é o dono' : '');
+  }
+
   function renderGroup() {
     var gr = groupInfo();
-    show(g.none, groupAllowed() && !gr);
-    show(g.view, !!gr);
     var gid = gr ? gr.id : null;
     if (gid !== lastGroupId) {
       // trocou de grupo (ou saiu): limpa convite, mensagens e chat anterior
       lastGroupId = gid;
       show(g.inviteBox, false);
       setMessage(g.error, '');
+      if (g.dlgInvite.open) g.dlgInvite.close();
+      if (g.dlgProfile.open) g.dlgProfile.close();
       chatState.signature = '';
       chatState.lastId = null;
       chatState.forceScroll = true;
     }
-    if (!gr) return;
+    renderGroupDialog();
+    if (!gr) {
+      g.ranking.textContent = '';
+      g.membersList.textContent = '';
+      g.membersVoice.textContent = '';
+      return;
+    }
 
-    var members = Array.isArray(gr.members) ? gr.members : [];
+    var members = groupMembers(gr);
     g.name.textContent = gr.name || 'Grupo';
-    g.meta.textContent = members.length + ' de 10 ' + (members.length === 1 ? 'membro' : 'membros') +
-      (gr.isOwner ? ' · você é o dono' : '');
+    g.chatWelcomeText.textContent = 'Este é o começo do chat de ' + (gr.name || 'seu grupo') + '.';
     show(g.btnInvite, !!gr.isOwner);
-    if (!gr.isOwner) show(g.inviteBox, false);
+    if (!gr.isOwner && g.dlgInvite.open) g.dlgInvite.close();
     renderRanking(gr, members);
+    renderMembers();
     renderChat();
+    if (g.dlgProfile.open && profileTarget) refreshProfile();
   }
 
   function sortedMembers(members) {
@@ -1056,6 +1315,57 @@
     });
   }
 
+  function hasMmr(m) {
+    return !!(m && m.mmr && typeof m.mmr.progress === 'number');
+  }
+
+  function mmrPct(mmr) {
+    return Math.floor(Math.max(0, Math.min(1, mmr.progress)) * 100);
+  }
+
+  // Bloco de MMR (atual → meta, barra, estado, atualização): ranking e cartão de perfil
+  function mmrBlock(m, parent) {
+    var mmr = m.mmr;
+    if (hasMmr(m)) {
+      var pct = mmrPct(mmr);
+      var line = el('p', 'rank-mmr');
+      line.appendChild(el('strong', null, num(mmr.current)));
+      line.appendChild(el('span', 'rank-arrow', ' → '));
+      line.appendChild(document.createTextNode(num(mmr.goal) + ' MMR'));
+      parent.appendChild(line);
+
+      var bar = el('div', 'rank-progress');
+      var track = el('div', 'mini-progress');
+      track.setAttribute('aria-hidden', 'true');
+      var fill = el('div', 'mini-progress-fill');
+      fill.style.setProperty('--progress', String(pct));
+      track.appendChild(fill);
+      bar.appendChild(track);
+      bar.appendChild(el('span', 'rank-pct', pct + '% da meta'));
+      parent.appendChild(bar);
+
+      var st = el('p', 'rank-status');
+      var status = STATUS_LABEL[mmr.status] ? mmr.status : 'insufficient_data';
+      st.dataset.status = status;
+      st.appendChild(icon(status, 18, 'rank-icon'));
+      st.appendChild(el('span', null, STATUS_LABEL[status]));
+      parent.appendChild(st);
+
+      var upd = toMs(mmr.updatedAt);
+      if (upd != null) {
+        var cap = el('p', 'caption rank-updated');
+        cap.appendChild(document.createTextNode('Atualizado '));
+        cap.appendChild(relTime(upd));
+        parent.appendChild(cap);
+      }
+    } else {
+      var hid = el('p', 'rank-status rank-hidden');
+      hid.appendChild(icon('hidden', 18, 'rank-icon'));
+      hid.appendChild(el('span', null, 'MMR escondido'));
+      parent.appendChild(hid);
+    }
+  }
+
   function renderRanking(gr, members) {
     g.ranking.textContent = '';
     sortedMembers(members).forEach(function (m, idx) {
@@ -1063,6 +1373,7 @@
       if (m.isMe) li.classList.add('is-me');
 
       li.appendChild(el('span', 'rank-pos', (idx + 1) + 'º'));
+      li.appendChild(avatar(memberName(m), m.userId, 'md'));
 
       var body = el('div', 'rank-body');
       var head = el('div', 'rank-head');
@@ -1070,46 +1381,7 @@
       if (m.isMe) head.appendChild(el('span', 'tag tag-me', 'você'));
       if (m.isOwner) head.appendChild(el('span', 'tag', 'dono'));
       body.appendChild(head);
-
-      var mmr = m.mmr;
-      if (mmr && typeof mmr.progress === 'number') {
-        var pct = Math.floor(Math.max(0, Math.min(1, mmr.progress)) * 100);
-        var line = el('p', 'rank-mmr');
-        line.appendChild(el('strong', null, num(mmr.current)));
-        line.appendChild(el('span', 'rank-arrow', ' → '));
-        line.appendChild(document.createTextNode(num(mmr.goal) + ' MMR'));
-        body.appendChild(line);
-
-        var bar = el('div', 'rank-progress');
-        var track = el('div', 'mini-progress');
-        track.setAttribute('aria-hidden', 'true');
-        var fill = el('div', 'mini-progress-fill');
-        fill.style.setProperty('--progress', String(pct));
-        track.appendChild(fill);
-        bar.appendChild(track);
-        bar.appendChild(el('span', 'rank-pct', pct + '% da meta'));
-        body.appendChild(bar);
-
-        var st = el('p', 'rank-status');
-        var status = STATUS_LABEL[mmr.status] ? mmr.status : 'insufficient_data';
-        st.dataset.status = status;
-        st.appendChild(icon(status, 18, 'rank-icon'));
-        st.appendChild(el('span', null, STATUS_LABEL[status]));
-        body.appendChild(st);
-
-        var upd = toMs(mmr.updatedAt);
-        if (upd != null) {
-          var cap = el('p', 'caption rank-updated');
-          cap.appendChild(document.createTextNode('Atualizado '));
-          cap.appendChild(relTime(upd));
-          body.appendChild(cap);
-        }
-      } else {
-        var hid = el('p', 'rank-status rank-hidden');
-        hid.appendChild(icon('hidden', 18, 'rank-icon'));
-        hid.appendChild(el('span', null, 'MMR escondido'));
-        body.appendChild(hid);
-      }
+      mmrBlock(m, body);
       li.appendChild(body);
 
       if (gr.isOwner && !m.isMe) {
@@ -1122,6 +1394,238 @@
       }
       g.ranking.appendChild(li);
     });
+  }
+
+  /* Lista de membros (coluna da direita) */
+
+  function voiceParticipants() {
+    var list = voiceState && Array.isArray(voiceState.participants) ? voiceState.participants : [];
+    return (voiceState && (voiceState.connected || list.length)) ? list : [];
+  }
+
+  function memberRow(m, part) {
+    var li = el('li');
+    var b = el('button', 'member');
+    b.type = 'button';
+    b.setAttribute('aria-haspopup', 'dialog');
+    var name = memberName(m);
+    var av = avatar(name, m.userId, 'sm');
+    if (part && part.speaking) av.classList.add('is-speaking');
+    b.appendChild(av);
+
+    var text = el('span', 'member-text');
+    var top = el('span', 'member-top');
+    top.appendChild(el('span', 'member-name', name));
+    if (m.isOwner) {
+      var crown = icon('crown', 14, 'member-crown');
+      top.appendChild(crown);
+    }
+    text.appendChild(top);
+    var sub = el('span', 'member-sub');
+    if (hasMmr(m)) {
+      sub.textContent = num(m.mmr.current) + ' MMR';
+    } else {
+      sub.textContent = 'MMR escondido';
+      sub.classList.add('is-hidden');
+    }
+    text.appendChild(sub);
+    b.appendChild(text);
+
+    if (part && (part.deafened || part.muted)) {
+      var flags = el('span', 'member-flags');
+      flags.appendChild(icon(part.deafened ? 'deafened' : 'micOff', 16, 'member-flag'));
+      b.appendChild(flags);
+    }
+
+    var label = name + (m.isMe ? ' (você)' : '') + (m.isOwner ? ', dono do grupo' : '') + ', ' + sub.textContent;
+    if (part) label += part.deafened ? ', ensurdecido' : (part.muted ? ', mutado' : (part.speaking ? ', falando' : ''));
+    b.setAttribute('aria-label', label + '. Abrir perfil');
+    b.addEventListener('click', function () { openProfile(m, b); });
+    li.appendChild(b);
+    return li;
+  }
+
+  function renderMembers() {
+    var gr = groupInfo();
+    g.membersList.textContent = '';
+    g.membersVoice.textContent = '';
+    if (!gr) return;
+    var members = groupMembers(gr);
+    var parts = voiceParticipants();
+    var byId = {};
+    parts.forEach(function (p) { if (p && p.userId) byId[p.userId] = p; });
+
+    var inVoice = [];
+    var rest = [];
+    members.forEach(function (m) { (byId[m.userId] ? inVoice : rest).push(m); });
+    // quem está na voz mas não aparece nos membros (raro): mostra com o nome da sala
+    var known = {};
+    members.forEach(function (m) { known[m.userId] = true; });
+    parts.forEach(function (p) {
+      if (p && p.userId && !known[p.userId]) inVoice.push({ userId: p.userId, displayName: p.name, mmr: null });
+    });
+
+    var byName = function (a, b) {
+      if (!!a.isOwner !== !!b.isOwner) return a.isOwner ? -1 : 1;
+      return memberName(a).localeCompare(memberName(b), 'pt-BR');
+    };
+    inVoice.sort(byName).forEach(function (m) { g.membersVoice.appendChild(memberRow(m, byId[m.userId])); });
+    rest.sort(byName).forEach(function (m) { g.membersList.appendChild(memberRow(m, null)); });
+
+    show(g.membersVoiceSection, inVoice.length > 0);
+    show(g.membersAllSection, rest.length > 0 || inVoice.length === 0);
+    g.membersVoiceTitle.textContent = 'Na voz — ' + inVoice.length;
+    g.membersAllTitle.textContent = 'Membros — ' + rest.length;
+  }
+
+  /* Cartão de perfil */
+
+  function openProfile(m, returnTo) {
+    profileTarget = m;
+    profileReturnFocus = returnTo || null;
+    refreshProfile();
+    openDialog(g.dlgProfile);
+    var closeBtn = g.dlgProfile.querySelector('.profile-close');
+    if (closeBtn) closeBtn.focus();
+  }
+
+  function refreshProfile() {
+    var gr = groupInfo();
+    if (!profileTarget) return;
+    var current = null;
+    groupMembers(gr).forEach(function (m) { if (m.userId === profileTarget.userId) current = m; });
+    if (!current) {
+      if (g.dlgProfile.open) g.dlgProfile.close();
+      return;
+    }
+    profileTarget = current;
+    var name = memberName(current);
+    g.profileName.textContent = name;
+    g.profileInitials.textContent = initials(name);
+    g.profileAvatar.dataset.tone = String(toneFor(current.userId || name));
+    g.profileTags.textContent = '';
+    if (current.isMe) g.profileTags.appendChild(el('span', 'tag tag-me', 'você'));
+    if (current.isOwner) {
+      var t = el('span', 'tag tag-owner');
+      t.appendChild(icon('crown', 12, 'member-crown'));
+      t.appendChild(document.createTextNode('dono'));
+      g.profileTags.appendChild(t);
+    }
+    show(g.profileTags, g.profileTags.childNodes.length > 0);
+    g.profileMmr.textContent = '';
+    g.profileMmr.appendChild(el('h3', 'profile-section', 'MMR'));
+    mmrBlock(current, g.profileMmr);
+    show(g.profileRemove, !!(gr && gr.isOwner && !current.isMe));
+    g.profileRemove.setAttribute('aria-label', 'Remover ' + name + ' do grupo');
+  }
+
+  g.profileRemove.addEventListener('click', function () {
+    var m = profileTarget;
+    var back = profileReturnFocus;
+    profileReturnFocus = null;
+    g.dlgProfile.close();
+    if (m) openRemove(m, back);
+  });
+
+  g.dlgProfile.addEventListener('close', function () {
+    if (profileReturnFocus && document.body.contains(profileReturnFocus)) profileReturnFocus.focus();
+    profileReturnFocus = null;
+  });
+
+  /* Menu do grupo (Convidar, Sair do grupo) */
+
+  function menuItems() {
+    return Array.prototype.filter.call(g.menu.querySelectorAll('[role="menuitem"]'), function (b) { return !b.hidden; });
+  }
+
+  function openGroupMenu(focusLast) {
+    show(g.menu, true);
+    g.menuBtn.setAttribute('aria-expanded', 'true');
+    var items = menuItems();
+    if (items.length) items[focusLast ? items.length - 1 : 0].focus();
+  }
+
+  function closeGroupMenu(returnFocus) {
+    if (g.menu.hidden) return;
+    show(g.menu, false);
+    g.menuBtn.setAttribute('aria-expanded', 'false');
+    if (returnFocus) g.menuBtn.focus();
+  }
+
+  g.menuBtn.addEventListener('click', function () {
+    if (g.menu.hidden) openGroupMenu(false);
+    else closeGroupMenu(true);
+  });
+
+  g.menuBtn.addEventListener('keydown', function (ev) {
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      openGroupMenu(ev.key === 'ArrowUp');
+    }
+  });
+
+  g.menu.addEventListener('keydown', function (ev) {
+    var items = menuItems();
+    var i = items.indexOf(document.activeElement);
+    var next = null;
+    if (ev.key === 'ArrowDown') next = (i + 1) % items.length;
+    else if (ev.key === 'ArrowUp') next = (i - 1 + items.length) % items.length;
+    else if (ev.key === 'Home') next = 0;
+    else if (ev.key === 'End') next = items.length - 1;
+    else if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); closeGroupMenu(true); return; }
+    else if (ev.key === 'Tab') { closeGroupMenu(false); return; }
+    if (next === null) return;
+    ev.preventDefault();
+    items[next].focus();
+  });
+
+  document.addEventListener('click', function (ev) {
+    if (g.menu.hidden) return;
+    var t = ev.target;
+    if (t && t.closest && (t.closest('#group-menu') || t.closest('#group-menu-btn'))) return;
+    closeGroupMenu(false);
+  });
+
+  /* Diálogo de criar/entrar */
+
+  function renderGroupDialog() {
+    var a = authInfo();
+    var allowed = groupAllowed();
+    var inGroup = !!groupInfo();
+    show(g.signinHint, !allowed);
+    g.signinHintText.textContent = a && a.status === 'unconfigured' ? 'Contas ainda não configuradas' : 'Entre na sua conta para usar o grupo';
+    show(g.btnGroupSignin, !!(a && a.status === 'signed_out'));
+    show(g.already, allowed && inGroup);
+    show(g.none, allowed && !inGroup);
+  }
+
+  function openGroupDialog(returnTo) {
+    groupDialogReturn = returnTo || null;
+    renderGroupDialog();
+    openDialog(g.dlgGroup);
+    if (!g.none.hidden) g.createName.focus();
+    else if (!g.btnGroupSignin.hidden) g.btnGroupSignin.focus();
+    else {
+      var close = g.dlgGroup.querySelector('[data-close]');
+      if (close) close.focus();
+    }
+  }
+
+  g.dlgGroup.addEventListener('close', function () {
+    if (groupDialogReturn && document.body.contains(groupDialogReturn) && !groupDialogReturn.closest('[hidden]')) groupDialogReturn.focus();
+    groupDialogReturn = null;
+  });
+
+  g.btnGroupSignin.addEventListener('click', function () {
+    groupDialogReturn = null;
+    g.dlgGroup.close();
+    openAuthDialog(ac.signin, ac.signin.email);
+  });
+
+  function afterGroupEntered() {
+    groupDialogReturn = null;
+    if (g.dlgGroup.open) g.dlgGroup.close();
+    selectView('chat', { focus: 'title' });
   }
 
   // Criar grupo
@@ -1148,8 +1652,7 @@
         g.createName.focus();
       } else {
         g.createForm.reset();
-        g.name.setAttribute('tabindex', '-1');
-        g.name.focus();
+        afterGroupEntered();
       }
     });
   });
@@ -1188,20 +1691,28 @@
         g.joinCode.focus();
       } else {
         g.joinForm.reset();
-        g.name.setAttribute('tabindex', '-1');
-        g.name.focus();
+        afterGroupEntered();
       }
     });
   });
 
   // Convidar
   var dateFmt = new Intl.DateTimeFormat('pt-BR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  var inviteBusy = false;
 
   g.btnInvite.addEventListener('click', function () {
+    closeGroupMenu(false);
+    if (inviteBusy) return;
     setMessage(g.error, '');
-    g.btnInvite.disabled = true;
+    show(g.inviteBox, false);
+    g.inviteLoading.textContent = 'Criando convite…';
+    openDialog(g.dlgInvite);
+    var close = g.dlgInvite.querySelector('[data-close]');
+    if (close) close.focus();
+    inviteBusy = true;
     call(function () { return bridge.createInvite(); }).then(function (res) {
-      g.btnInvite.disabled = false;
+      inviteBusy = false;
+      g.inviteLoading.textContent = '';
       if (!res || !res.ok || typeof res.code !== 'string') {
         setMessage(g.error, (res && res.error) || 'Não deu para criar o convite. Tente de novo.');
         return;
@@ -1213,8 +1724,12 @@
         : 'Serve para até 5 pessoas.';
       g.inviteStatus.textContent = '';
       show(g.inviteBox, true);
-      g.btnCopy.focus();
+      if (g.dlgInvite.open) g.btnCopy.focus();
     });
+  });
+
+  g.dlgInvite.addEventListener('close', function () {
+    if (!g.menuBtn.closest('[hidden]')) g.menuBtn.focus();
   });
 
   function selectInviteCode() {
@@ -1245,6 +1760,7 @@
 
   // Sair do grupo
   g.btnLeave.addEventListener('click', function () {
+    closeGroupMenu(false);
     var gr = groupInfo();
     if (!gr) return;
     var others = (gr.members || []).filter(function (m) { return !m.isMe; }).length;
@@ -1267,6 +1783,9 @@
     ev.preventDefault();
     setMessage(g.leaveError, '');
     g.leaveSubmit.disabled = true;
+    if (voiceReady() && typeof window.GhostVoice.leave === 'function') {
+      try { window.GhostVoice.leave(); } catch (e) { /* ignora */ }
+    }
     call(function () { return bridge.leaveGroup(); }).then(function (res) {
       g.leaveSubmit.disabled = false;
       var err = applyResult(res);
@@ -1274,8 +1793,7 @@
         setMessage(g.leaveError, err);
       } else {
         g.dlgLeave.close();
-        if (!g.createName.closest('[hidden]')) g.createName.focus();
-        else focusMain();
+        selectView('mmr', { focus: 'title' });
       }
     });
   });
@@ -1331,8 +1849,10 @@
   };
   var chatState = { signature: '', lastId: null, forceScroll: true, sending: false };
   var CHAT_MAX = 1000;
+  var GROUP_GAP_MS = 5 * 60000;
   var timeFmt = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' });
   var dayFmt = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' });
+  var longDayFmt = new Intl.DateTimeFormat('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
 
   function chatTime(ms) {
     var d = new Date(ms);
@@ -1341,12 +1861,30 @@
     return sameDay ? timeFmt.format(d) : dayFmt.format(d) + ' ' + timeFmt.format(d);
   }
 
+  function dayKey(ms) {
+    var d = new Date(ms);
+    return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
+  }
+
+  function dayLabel(ms) {
+    var today = new Date();
+    var yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+    if (dayKey(ms) === dayKey(today.getTime())) return 'Hoje';
+    if (dayKey(ms) === dayKey(yesterday.getTime())) return 'Ontem';
+    return longDayFmt.format(new Date(ms));
+  }
+
   function atBottom() {
     return c.scroll.scrollHeight - c.scroll.scrollTop - c.scroll.clientHeight < 32;
   }
 
   function scrollChatToEnd() {
     c.scroll.scrollTop = c.scroll.scrollHeight;
+  }
+
+  function authorKey(m) {
+    if (m.mine) return 'me';
+    return m.userId ? 'u:' + m.userId : 'n:' + (m.displayName || '');
   }
 
   function renderChat() {
@@ -1364,22 +1902,49 @@
     var prevTop = c.scroll.scrollTop;
     var announce = [];
     var isFirstLoad = chatState.lastId === null;
+    var myName = accountLabel(authInfo());
 
     c.list.textContent = '';
+    var prev = null; // { key, ms, day }
     msgs.forEach(function (m) {
       var mine = !!m.mine;
-      var li = el('li', 'msg' + (mine ? ' mine' : ''));
-      var meta = el('p', 'msg-meta');
-      meta.appendChild(el('span', 'msg-author', mine ? 'Você' : (m.displayName || 'Fantasma')));
       var ms = toMs(m.createdAt);
-      if (ms != null) {
-        var t = el('time', 'msg-time', chatTime(ms));
-        t.setAttribute('datetime', new Date(ms).toISOString());
-        meta.appendChild(t);
+      var day = ms != null ? dayKey(ms) : null;
+      if (day && (!prev || prev.day !== day)) {
+        var sep = el('li', 'day-divider');
+        sep.appendChild(el('span', 'day-divider-text', dayLabel(ms)));
+        c.list.appendChild(sep);
+        prev = null;
       }
-      li.appendChild(meta);
+      var key = authorKey(m);
+      var cont = !!(prev && prev.key === key && ms != null && prev.ms != null && ms - prev.ms >= 0 && ms - prev.ms <= GROUP_GAP_MS);
+      var author = mine ? (m.displayName || myName || 'Você') : (m.displayName || 'Fantasma');
+
+      var li = el('li', 'msg' + (mine ? ' mine' : '') + (cont ? ' is-cont' : ' is-first'));
+      if (cont) {
+        // sequência do mesmo autor: só o texto (autor e hora ficam para o leitor de tela)
+        var hiddenMeta = el('span', 'visually-hidden', author + (ms != null ? ', ' + chatTime(ms) : '') + ': ');
+        li.appendChild(hiddenMeta);
+        if (ms != null) {
+          var hover = el('time', 'msg-hover-time', timeFmt.format(new Date(ms)));
+          hover.setAttribute('datetime', new Date(ms).toISOString());
+          hover.setAttribute('aria-hidden', 'true');
+          li.appendChild(hover);
+        }
+      } else {
+        li.appendChild(avatar(author, m.userId || author, 'md'));
+        var meta = el('p', 'msg-meta');
+        meta.appendChild(el('span', 'msg-author', author));
+        if (ms != null) {
+          var t = el('time', 'msg-time', chatTime(ms));
+          t.setAttribute('datetime', new Date(ms).toISOString());
+          meta.appendChild(t);
+        }
+        li.appendChild(meta);
+      }
       li.appendChild(el('p', 'msg-body', typeof m.body === 'string' ? m.body : ''));
       c.list.appendChild(li);
+      prev = { key: key, ms: ms, day: day };
       if (!isFirstLoad && !mine && typeof m.id === 'number' && m.id > chatState.lastId) announce.push(m);
     });
 
@@ -1390,8 +1955,8 @@
     else c.scroll.scrollTop = prevTop;
     chatState.forceScroll = false;
 
-    // anuncia só mensagens novas de outras pessoas, e só com a aba Grupo aberta
-    if (announce.length && currentTab === 'group') {
+    // anuncia só mensagens novas de outras pessoas, e só com o #chat aberto
+    if (announce.length && currentView === 'chat') {
       var lm = announce[announce.length - 1];
       var who = lm.displayName || 'Fantasma';
       c.live.textContent = (announce.length > 1 ? announce.length + ' mensagens novas. Última de ' : 'Mensagem de ') + who + ': ' + lm.body;
@@ -1416,8 +1981,15 @@
     }
   }
 
+  // o campo cresce com o texto (até o limite do CSS)
+  function autoGrow() {
+    c.input.style.setProperty('--input-h', 'auto');
+    c.input.style.setProperty('--input-h', Math.min(c.input.scrollHeight + 2, 200) + 'px');
+  }
+
   c.input.addEventListener('input', function () {
     updateCounter();
+    autoGrow();
     if (!c.error.hidden) setMessage(c.error, '');
   });
 
@@ -1456,10 +2028,107 @@
       } else {
         c.input.value = '';
         updateCounter();
+        autoGrow();
         scrollChatToEnd();
       }
       c.input.focus();
     });
+  });
+
+  /* ---------- voz (voice.js: GhostVoice) ---------- */
+
+  var voiceState = null;
+  var voiceInitDone = false;
+  var voiceUi = {
+    channelNote: $('voice-channel-note'),
+    channelState: $('voice-channel-state'),
+    fallback: $('voice-fallback'),
+    stage: $('voice-stage'),
+    channelMembers: $('voice-channel-members'),
+    connection: $('voice-connection'),
+    userControls: $('voice-user-controls')
+  };
+
+  // A API nova (init/update/join) pode ainda não ter chegado: sem ela, a voz fica indisponível.
+  function voiceApi() {
+    var gv = window.GhostVoice;
+    return gv && typeof gv.init === 'function' && typeof gv.update === 'function' && typeof gv.join === 'function' ? gv : null;
+  }
+
+  function voiceReady() { return voiceInitDone && !!voiceApi(); }
+
+  function initVoice() {
+    var gv = voiceApi();
+    if (!gv) return;
+    try {
+      gv.init({
+        bridge: bridge,
+        els: {
+          stage: voiceUi.stage,
+          channelMembers: voiceUi.channelMembers,
+          connection: voiceUi.connection,
+          userControls: voiceUi.userControls
+        },
+        onState: onVoiceState
+      });
+      voiceInitDone = true;
+    } catch (e) {
+      voiceInitDone = false;
+    }
+  }
+
+  function onVoiceState(state) {
+    voiceState = state && typeof state === 'object' ? state : null;
+    renderVoiceChannel();
+    renderMembers();
+  }
+
+  function renderVoiceChannel() {
+    var ready = voiceReady();
+    var connected = !!(voiceState && voiceState.connected);
+    var connecting = !!(voiceState && voiceState.connecting);
+    show(voiceUi.channelNote, !ready);
+    show(voiceUi.fallback, !ready);
+    show(voiceUi.stage, ready);
+    channels.voice.classList.toggle('is-connected', connected);
+    channels.voice.classList.toggle('is-connecting', connecting && !connected);
+    voiceUi.channelState.textContent = connected ? ', conectado' : (connecting ? ', conectando' : '');
+    app.dataset.voice = connected ? 'connected' : 'off';
+  }
+
+  function joinVoice() {
+    if (!voiceReady()) return;
+    if (voiceState && (voiceState.connected || voiceState.connecting)) return;
+    try { window.GhostVoice.join(); } catch (e) { /* voice.js mostra o erro no palco */ }
+  }
+
+  /* ---------- atalhos de teclado ---------- */
+
+  document.addEventListener('keydown', function (ev) {
+    // Ctrl+Shift+M (mutar) e Ctrl+Shift+D (ensurdecer), só conectado na voz
+    if (ev.ctrlKey && ev.shiftKey && !ev.altKey && !ev.metaKey) {
+      var k = String(ev.key || '').toLowerCase();
+      if ((k === 'm' || k === 'd') && voiceReady() && voiceState && voiceState.connected) {
+        ev.preventDefault();
+        var gv = window.GhostVoice;
+        try {
+          if (k === 'm' && typeof gv.toggleMute === 'function') gv.toggleMute();
+          if (k === 'd' && typeof gv.toggleDeafen === 'function') gv.toggleDeafen();
+        } catch (e) { /* ignora */ }
+        return;
+      }
+    }
+    if (ev.key === 'Escape' && !ev.defaultPrevented) {
+      if (document.querySelector('dialog[open]')) return;
+      if (!g.menu.hidden) { closeGroupMenu(true); return; }
+      if (membersOpen && !isWide()) {
+        membersOpen = false;
+        renderMembersVisibility();
+        nav.btnMembers.focus();
+        return;
+      }
+      if (sidebarOpen) setSidebarOpen(false, true);
+    }
   });
 
   /* ---------- inicialização ---------- */
@@ -1467,10 +2136,12 @@
   function start() {
     if (!bridge) {
       els.boot.textContent = 'Não foi possível conectar ao aplicativo. Feche e abra o Ghost Rank de novo.';
+      renderVoiceChannel();
       return;
     }
 
-    if (voice) voice.init({ bridge: bridge, getView: function () { return view; } });
+    initVoice();
+    renderVoiceChannel();
 
     if (typeof bridge.onUpdate === 'function') {
       bridge.onUpdate(function (v) {

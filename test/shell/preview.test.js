@@ -57,8 +57,35 @@ test('a prévia troca o LiveKit pelo falso local e não usa rede nem fontes exte
     const js = stripComments(fs.readFileSync(file, 'utf8'));
     assert.doesNotMatch(js, /\bfetch\(|XMLHttpRequest|new WebSocket|EventSource|sendBeacon|importScripts/, path.basename(file));
   }
-  const css = fs.readFileSync(path.join(RENDERER, 'styles.css'), 'utf8');
-  assert.doesNotMatch(css, /@import|url\(\s*['"]?https?:/i);
+  for (const name of ['styles.css', 'voice.css']) {
+    const file = path.join(RENDERER, name);
+    if (!fs.existsSync(file)) continue; // voice.css chega com a sala de voz nova
+    const css = fs.readFileSync(file, 'utf8');
+    assert.doesNotMatch(css, /@import|url\(\s*['"]?https?:/i, name);
+  }
+});
+
+test('a tela carrega voice.css depois de styles.css e a prévia aponta para src/renderer', () => {
+  const html = fs.readFileSync(path.join(RENDERER, 'index.html'), 'utf8');
+  const styles = html.indexOf('<link rel="stylesheet" href="styles.css">');
+  const voice = html.indexOf('<link rel="stylesheet" href="voice.css">');
+  assert.ok(styles > 0 && styles < voice);
+  const preview = build();
+  assert.match(preview, /href="\.\.\/src\/renderer\/styles\.css"/);
+  assert.match(preview, /href="\.\.\/src\/renderer\/voice\.css"/);
+});
+
+test('a janela tem os contêineres da voz e a navegação acessível', () => {
+  const html = fs.readFileSync(path.join(RENDERER, 'index.html'), 'utf8');
+  for (const id of ['voice-stage', 'voice-channel-members', 'voice-connection', 'voice-user-controls']) {
+    assert.match(html, new RegExp('id="' + id + '"'), id);
+  }
+  assert.match(html, /<nav class="rail" aria-label=/);
+  assert.match(html, /<nav class="sidebar-scroll" aria-label="Canais"/);
+  assert.match(html, /<main id="conteudo"/);
+  const app = stripComments(fs.readFileSync(path.join(RENDERER, 'app.js'), 'utf8'));
+  assert.match(app, /typeof gv\.init === 'function'/, 'protege a chamada da voz');
+  assert.match(app, /aria-current/);
 });
 
 test('miniaturas de tela só entram se forem data:image/', () => {

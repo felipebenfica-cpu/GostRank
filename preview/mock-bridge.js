@@ -2,8 +2,9 @@
    Cenários pela query string: ?s=setup | on_track | unreachable | insufficient | goal | empty | error | syncing
    | signed_out | signed_in | unconfigured (estado da conta; o painel usa os dados de on_track)
    | group (dono de um grupo com 4 membros e chat) | no_group (conta sem grupo) | voice (igual a group, com voz)
-   Extras só da prévia: ?tab=group|mmr abre a aba direto (os cenários de grupo já abrem em Grupo);
-   ?join=1 entra sozinho na sala de voz (use com ?s=voice). Código de convite que funciona: FANTASMA23. */
+   Extras só da prévia: ?tab=group abre o #chat do grupo (sem grupo, abre o diálogo de criar/entrar),
+   ?tab=mmr|ranking|voice abre esse canal (os cenários de grupo já abrem no #chat);
+   ?join=1 clica no canal de voz, entra na sala e assiste à transmissão (use com ?s=voice). Código de convite que funciona: FANTASMA23. */
 (function () {
   'use strict';
 
@@ -157,7 +158,12 @@
       { id: 103, userId: ME, displayName: 'Fantasma Noturno', body: 'Bora! Às 21h eu entro na sala.', createdAt: now - 90 * MIN },
       { id: 104, userId: ECO, displayName: 'Eco', body: '<b>isto não é HTML</b> e aparece como texto mesmo', createdAt: now - 60 * MIN },
       { id: 105, userId: LUA, displayName: 'Lua<Cheia>', body: 'Subi mais 50 hoje.\nFaltam só 140 para a meta!', createdAt: now - 41 * MIN },
-      { id: 106, userId: SOMBRA, displayName: 'Sombra', body: 'Parabéns! Eu vou focar em offlane até subir o winrate, porque de suporte não está rolando. Alguém tem dica de herói?', createdAt: now - 12 * MIN }
+      { id: 106, userId: SOMBRA, displayName: 'Sombra', body: 'Parabéns! Eu vou focar em offlane até subir o winrate, porque de suporte não está rolando. Alguém tem dica de herói?', createdAt: now - 12 * MIN },
+      { id: 107, userId: SOMBRA, displayName: 'Sombra', body: 'Pensei em Mars ou Primal Beast.', createdAt: now - 11 * MIN },
+      { id: 108, userId: SOMBRA, displayName: 'Sombra', body: 'Ou Underlord, que segura bem a lane.', createdAt: now - 10 * MIN },
+      { id: 109, userId: ECO, displayName: 'Eco', body: 'Mars é ótimo nesse patch.', createdAt: now - 6 * MIN },
+      { id: 110, userId: ME, displayName: 'Fantasma Noturno', body: 'Concordo. Às 21h na sala de voz então!', createdAt: now - 4 * MIN },
+      { id: 111, userId: ME, displayName: 'Fantasma Noturno', body: 'Vou compartilhar a tela pra gente revisar a última partida.', createdAt: now - 3 * MIN }
     ];
   }
 
@@ -279,13 +285,26 @@
 
   // Só da prévia: abre a aba pedida e, com ?join=1, entra na sala de voz
   var firstViewServed = false;
+  function visible(id) {
+    var node = document.getElementById(id);
+    return node && !node.closest('[hidden]') ? node : null;
+  }
   function previewExtras() {
     var tab = params.get('tab') || (GROUP_SCENARIOS[scenario] ? 'group' : null);
-    var btn = tab === 'group' ? document.getElementById('tab-group') : (tab === 'mmr' ? document.getElementById('tab-mmr') : null);
+    var btn = null;
+    if (tab === 'group') btn = visible('ch-chat') || visible('rail-add');
+    else if (tab === 'mmr') btn = visible('ch-mmr');
+    else if (tab === 'ranking') btn = visible('ch-ranking');
+    else if (tab === 'voice') btn = visible('ch-voice');
+    var join = params.get('join') === '1';
+    if (join) btn = visible('ch-voice') || btn;
     if (btn) btn.click();
-    if (params.get('join') === '1') {
-      var join = document.getElementById('btn-voice-join');
-      if (join && !join.closest('[hidden]')) join.click();
+    // com ?join=1, assiste à transmissão uns 2 s depois de entrar (abre o modo foco)
+    if (join) {
+      setTimeout(function () {
+        var watch = document.querySelector('[data-vc-action="watch"]');
+        if (watch) watch.click();
+      }, 2000);
     }
   }
 
