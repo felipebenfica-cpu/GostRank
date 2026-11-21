@@ -9,14 +9,15 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const sqlFile = path.join(__dirname, '..', '..', 'supabase', 'migrations', '0001_perfis.sql');
-const binDir = (() => {
+const binDir = process.env.GR_PG_BINDIR || (() => {
   try {
     const v = fs.readdirSync('/usr/lib/postgresql').sort().pop();
     const d = `/usr/lib/postgresql/${v}/bin`;
     return fs.existsSync(`${d}/initdb`) && fs.existsSync(`${d}/pg_ctl`) ? d : null;
   } catch { return null; }
 })();
-const psqlBin = fs.existsSync('/usr/bin/psql') ? '/usr/bin/psql' : null;
+const psqlPath = process.env.GR_PSQL || '/usr/bin/psql';
+const psqlBin = fs.existsSync(psqlPath) ? psqlPath : null;
 
 const isRoot = process.getuid && process.getuid() === 0;
 function wrap(cmd, args) {
@@ -29,6 +30,7 @@ function run(cmd, args, opts = {}) {
   return spawnSync(c, a, { encoding: 'utf8', ...opts });
 }
 
+const tcp = process.env.GR_PG_LOOPBACK === '1';
 let skipReason = null;
 let dir, sock;
 const port = '54' + String(Math.floor(100 + Math.random() * 800));
@@ -37,12 +39,12 @@ if (!binDir || !psqlBin) skipReason = 'Postgres local nao encontrado';
 
 function psql(sqlText, { user = 'postgres', claim } = {}) {
   const pre = claim !== undefined ? `set request.jwt.claim.sub = '${claim}'; set role ${user};` : '';
-  const r = spawnSync(psqlBin, ['-h', sock, '-p', port, '-U', 'postgres', '-d', 'gr', '-v', 'ON_ERROR_STOP=1', '-At', '-c', pre + sqlText],
+  const r = spawnSync(psqlBin, ['-h', tcp ? '127.0.0.1' : sock, '-p', port, '-U', 'postgres', '-d', 'gr', '-v', 'ON_ERROR_STOP=1', '-At', '-c', pre + sqlText],
     { encoding: 'utf8' });
   return { ok: r.status === 0, out: (r.stdout || '').trim(), err: (r.stderr || '').trim() };
 }
 function psqlFile(f) {
-  const r = spawnSync(psqlBin, ['-h', sock, '-p', port, '-U', 'postgres', '-d', 'gr', '-v', 'ON_ERROR_STOP=1', '-q', '-f', f],
+  const r = spawnSync(psqlBin, ['-h', tcp ? '127.0.0.1' : sock, '-p', port, '-U', 'postgres', '-d', 'gr', '-v', 'ON_ERROR_STOP=1', '-q', '-f', f],
     { encoding: 'utf8' });
   return { ok: r.status === 0, err: (r.stderr || '').trim() };
 }
@@ -58,11 +60,11 @@ test.before(() => {
   const data = path.join(dir, 'data');
   let r = run(`${binDir}/initdb`, ['-D', data, '-U', 'postgres', '--auth=trust', '-E', 'UTF8']);
   if (r.status !== 0) { skipReason = 'initdb falhou: ' + (r.stderr || '').slice(0, 200); return; }
-  r = run(`${binDir}/pg_ctl`, ['-D', data, '-o', `-p ${port} -k ${dir} -c listen_addresses=''`, '-l', path.join(dir, 'log'), '-w', 'start']);
+  r = run(`${binDir}/pg_ctl`, ['-D', data, '-o', tcp ? `-p ${port} -c unix_socket_directories='' -c listen_addresses=127.0.0.1` : `-p ${port} -k ${dir} -c listen_addresses=''`, '-l', path.join(dir, 'log'), '-w', 'start']);
   if (r.status !== 0) { skipReason = 'pg_ctl start falhou: ' + (r.stderr || '').slice(0, 200); return; }
   const setup = `
     create database gr;`;
-  const c = spawnSync(psqlBin, ['-h', sock, '-p', port, '-U', 'postgres', '-d', 'postgres', '-c', setup], { encoding: 'utf8' });
+  const c = spawnSync(psqlBin, ['-h', tcp ? '127.0.0.1' : sock, '-p', port, '-U', 'postgres', '-d', 'postgres', '-c', setup], { encoding: 'utf8' });
   assert.strictEqual(c.status, 0, c.stderr);
   const boot = path.join(dir, 'boot.sql');
   fs.writeFileSync(boot, `

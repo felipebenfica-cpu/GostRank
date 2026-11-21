@@ -1,6 +1,6 @@
 'use strict';
 
-const { normalizeSupabaseUrl, isValidAnonKey } = require('./config');
+const { normalizeSupabaseUrl, isValidAnonKey } = require('../core/supabaseConfig');
 
 const MESSAGES = Object.freeze({
   invalid_credentials: 'E-mail ou senha incorretos.',
@@ -32,7 +32,7 @@ function userIdFromToken(token) {
   const parts = token.split('.');
   if (parts.length !== 3) return null;
   try {
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
     const sub = payload && payload.sub;
     return typeof sub === 'string' && UUID_RE.test(sub) ? sub.toLowerCase() : null;
   } catch {
@@ -119,11 +119,12 @@ function createAuthClient({ fetchImpl, supabaseUrl, anonKey, now = () => Date.no
     };
   }
 
-  function mapTokenFailure(status, data) {
+  function mapTokenFailure(data, refreshing = false) {
     const code = errorCodeOf(data);
     if (code === 'email_not_confirmed') return new AuthError('email_not_confirmed');
     if (code === 'weak_password') return new AuthError('weak_password');
-    if (status === 400 || status === 401 || status === 403 || status === 422) {
+    if (code === 'invalid_credentials' || code === 'invalid_grant'
+        || (refreshing && ['refresh_token_not_found', 'refresh_token_already_used', 'session_not_found', 'session_expired'].includes(code))) {
       return new AuthError('invalid_credentials');
     }
     return new AuthError('bad_response');
@@ -144,7 +145,7 @@ function createAuthClient({ fetchImpl, supabaseUrl, anonKey, now = () => Date.no
       method: 'POST', body: { email, password },
     });
     if (status === 200) return toSession(data);
-    throw mapTokenFailure(status, data);
+    throw mapTokenFailure(data);
   }
 
   async function refresh(refreshToken) {
@@ -153,7 +154,7 @@ function createAuthClient({ fetchImpl, supabaseUrl, anonKey, now = () => Date.no
       method: 'POST', body: { refresh_token: refreshToken },
     });
     if (status === 200) return toSession(data);
-    throw mapTokenFailure(status, data);
+    throw mapTokenFailure(data, true);
   }
 
   async function recover({ email }) {

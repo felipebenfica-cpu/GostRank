@@ -137,3 +137,10 @@ test('nada sensível vai para o console, nem nos erros', async () => {
   } finally { spy.restore(); }
   assert.deepEqual(spy.out, []);
 });
+
+test('falhas administrativas e de configuração não acusam senha incorreta', async () => {
+  for (const status of [400, 401, 403, 422]) {
+    const client = mk(fakeFetch({ status, body: { message: 'Authentication service unavailable' } }));
+    await rejectsCode(client.signIn({ email: 'ana@example.com', password: 'teste' }), 'bad_response');
+  }
+});

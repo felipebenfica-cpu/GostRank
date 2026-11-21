@@ -198,7 +198,7 @@ test('fluxo: login → criar → convite → chat → voz → sair; erros do ban
   // voz sem grupo
   assert.equal((await e.call('gr:voice:token', {})).ok, false);
   r = await e.call('gr:group:join', { code: 'zzzzzzzzzz' });
-  assert.deepEqual(r, { ok: false, error: 'Código de convite inválido, expirado ou já usado.' });
+  assert.deepEqual(r, { ok: false, error: 'Este código não corresponde a um grupo. Confira as 10 letras e números.' });
   r = await e.call('gr:group:create', { name: '  Os Fantasmas ' });
   assert.equal(r.ok, true);
   assert.equal(r.view.group.name, 'Os Fantasmas');
@@ -287,4 +287,28 @@ test('nenhum token, código de convite ou texto de chat no console', async () =>
   } finally { spy.restore(); }
   const all = spy.out.join('\n');
   for (const s of ['ABCDEFGH23', 'mensagem secreta', LK_TOKEN, 'eyJ']) assert.ok(!all.includes(s), s);
+});
+
+test('canal social valida argumentos antes de chamar o serviço e só aceita a janela do app', async () => {
+  const calls = [];
+  const controller = { getView: () => ({}) };
+  const handlers = ipc.buildHandlers(controller, {
+    account: { available: true, isSignedIn: () => true },
+    social: async (action, value) => { calls.push([action, value]); return { rows: [] }; },
+  });
+  const run = handlers['gr:social'];
+  assert.equal(typeof run, 'function');
+  assert.equal((await run(UNTRUSTED, { action: 'list' })).ok, false);
+  for (const payload of [
+    { action: 'send', value: 'invalid-id' },
+    { action: 'accept', value: U2, extra: 'x' },
+    { action: 'profilePhoto', value: 'data:image/svg+xml;base64,AAAA' },
+    { action: 'groupPhoto', value: 'data:image/jpeg;base64,' + 'A'.repeat(65536) },
+    { action: 'privacy', value: 'true' },
+    { action: 'unknown' },
+  ]) assert.equal((await run(TRUSTED, payload)).ok, false);
+  assert.equal(calls.length, 0);
+  const r = await run(TRUSTED, { action: 'search', value: '  Felipe  ' });
+  assert.deepEqual(r, { ok: true, rows: [] });
+  assert.deepEqual(calls, [['search', 'Felipe']]);
 });

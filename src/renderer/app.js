@@ -580,6 +580,7 @@
     var signedIn = status === 'signed_in';
     show(els.btnSignin, status === 'signed_out');
     show(els.btnAccount, signedIn);
+    socialSession(a);
     show(els.userDot, signedIn);
     var name;
     if (signedIn) {
@@ -739,7 +740,6 @@
     if (!password) return failField(d, d.pw, 'Informe a sua senha.');
     setBusy(d, true);
     call(function () { return bridge.signIn({ email: email, password: password }); }).then(function (res) {
-      d.pw.value = '';
       setBusy(d, false);
       var err = applyResult(res);
       if (err) {
@@ -814,6 +814,7 @@
     Array.prototype.forEach.call(d.form.querySelectorAll('input[name="mmr-visibility"]'), function (r) {
       r.checked = r.value === (a.mmrVisibility || 'friends');
     });
+    if (socialAccount) readSelf();
     openDialog(d.dlg);
     d.nick.focus();
     d.nick.select();
@@ -953,6 +954,8 @@
     a.dataset.tone = String(toneFor(key || name));
     a.setAttribute('aria-hidden', 'true');
     a.appendChild(el('span', 'avatar-initials', initials(name)));
+    var member = groupMembers(groupInfo()).find(function (m) { return m.userId === key; });
+    if (member) paintPhoto(a, member.photo);
     return a;
   }
 
@@ -1286,6 +1289,12 @@
       chatState.forceScroll = true;
     }
     renderGroupDialog();
+    var groupSettings = !!(socialAccount && gr && gr.isOwner);
+    show($('btn-group-settings'), groupSettings);
+    if (!groupSettings && $('dlg-group-settings').open) $('dlg-group-settings').close();
+    paintPhoto($('rail-group'), gr && gr.photo);
+    $('group-photo-initials').textContent = gr ? initials(gr.name) : '';
+    paintPhoto($('group-photo-preview'), gr && gr.photo);
     if (!gr) {
       g.ranking.textContent = '';
       g.membersList.textContent = '';
@@ -1294,6 +1303,12 @@
     }
 
     var members = groupMembers(gr);
+    if (members.length !== chatPhotos.size || members.some(function (m) {
+      return !chatPhotos.has(m.userId) || chatPhotos.get(m.userId) !== m.photo;
+    })) {
+      chatPhotos = new Map(members.map(function (m) { return [m.userId, m.photo]; }));
+      chatState.signature = '';
+    }
     g.name.textContent = gr.name || 'Grupo';
     g.chatWelcomeText.textContent = 'Este é o começo do chat de ' + (gr.name || 'seu grupo') + '.';
     show(g.btnInvite, !!gr.isOwner);
@@ -1501,6 +1516,7 @@
     profileTarget = current;
     var name = memberName(current);
     g.profileName.textContent = name;
+    paintPhoto(g.profileAvatar, current.photo);
     g.profileInitials.textContent = initials(name);
     g.profileAvatar.dataset.tone = String(toneFor(current.userId || name));
     g.profileTags.textContent = '';
@@ -1697,7 +1713,6 @@
   });
 
   // Convidar
-  var dateFmt = new Intl.DateTimeFormat('pt-BR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   var inviteBusy = false;
 
   g.btnInvite.addEventListener('click', function () {
@@ -1718,10 +1733,9 @@
         return;
       }
       g.inviteCode.textContent = res.code;
-      var exp = toMs(typeof res.expiresAt === 'string' ? Date.parse(res.expiresAt) : res.expiresAt);
-      g.inviteExpiry.textContent = exp != null
-        ? 'Vale até ' + dateFmt.format(new Date(exp)) + ' e serve para até 5 pessoas.'
-        : 'Serve para até 5 pessoas.';
+      g.inviteExpiry.textContent = res.expiresAt
+        ? 'Validade do convite: ' + new Date(res.expiresAt).toLocaleString('pt-BR') + '.'
+        : 'Código permanente. Pode ser usado quantas vezes precisar.';
       g.inviteStatus.textContent = '';
       show(g.inviteBox, true);
       if (g.dlgInvite.open) g.btnCopy.focus();
@@ -1766,11 +1780,11 @@
     var others = (gr.members || []).filter(function (m) { return !m.isMe; }).length;
     var text;
     if (gr.isOwner && others > 0) {
-      text = 'Você é o dono. Ao sair, a posse do grupo passa para o membro mais antigo. Você só volta com um novo convite.';
+      text = 'Você é o dono. Ao sair, a posse do grupo passa para o membro mais antigo. Você pode voltar com o código do grupo.';
     } else if (gr.isOwner) {
       text = 'Você é o único membro. Ao sair, o grupo e o chat são apagados.';
     } else {
-      text = 'Você sai do ranking e do chat. Para voltar, vai precisar de um novo convite.';
+      text = 'Você sai do ranking e do chat. Para voltar, use o código do grupo.';
     }
     g.leaveText.textContent = text;
     setMessage(g.leaveError, '');
@@ -1847,6 +1861,7 @@
     counter: $('chat-counter'),
     error: $('chat-error')
   };
+  var chatPhotos = new Map();
   var chatState = { signature: '', lastId: null, forceScroll: true, sending: false };
   var CHAT_MAX = 1000;
   var GROUP_GAP_MS = 5 * 60000;
@@ -2063,6 +2078,7 @@
     try {
       gv.init({
         bridge: bridge,
+        paintPhoto: paintPhoto,
         els: {
           stage: voiceUi.stage,
           channelMembers: voiceUi.channelMembers,
@@ -2129,6 +2145,234 @@
       }
       if (sidebarOpen) setSidebarOpen(false, true);
     }
+  });
+
+  var selfProfile = null;
+  var socialAccount = '';
+  var friendTab = 'friend';
+  var friendQuery = '';
+  var friendRequest = 0;
+  var profileRequest = 0;
+  var privacySaving = false;
+  var compact = $('appearance-compact');
+  try { compact.checked = localStorage.getItem('gr:compact') === 'true'; } catch (_) { /* device storage unavailable */ }
+  document.body.classList.toggle('compact', compact.checked);
+  compact.addEventListener('change', function () {
+    document.body.classList.toggle('compact', compact.checked);
+    try { localStorage.setItem('gr:compact', String(compact.checked)); } catch (_) { /* keep for this session */ }
+  });
+
+  function social(action, value) {
+    return call(function () { return bridge.social(action, value); });
+  }
+
+  function paintPhoto(node, photo) {
+    var img = node.querySelector('.social-photo');
+    if (typeof photo !== 'string' || photo.length > 65536 || !/^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/=]+$/.test(photo)) {
+      if (img) img.remove();
+      return;
+    }
+    if (!img) {
+      img = el('img', 'social-photo');
+      img.alt = '';
+      node.appendChild(img);
+    }
+    if (img.getAttribute('src') !== photo) img.src = photo;
+  }
+
+  function displaySelf() {
+    var photo = selfProfile && selfProfile.photo;
+    paintPhoto(els.userAvatar, photo);
+    $('account-photo-initials').textContent = initials(accountLabel(authInfo()));
+    paintPhoto($('account-photo-preview'), photo);
+    $('account-discoverable').disabled = !selfProfile || privacySaving;
+    $('account-discoverable').checked = !!(selfProfile && selfProfile.discoverable);
+  }
+
+  async function readSelf() {
+    var seq = ++profileRequest;
+    var res = await social('list', null);
+    if (seq !== profileRequest || !socialAccount) return;
+    if (res.ok) selfProfile = (res.rows || []).find(function (r) { return r.state === 'self'; }) || null;
+    else $('account-social-status').textContent = res.error || 'Não foi possível carregar o perfil.';
+    displaySelf();
+  }
+
+  function socialSession(a) {
+    var key = a && a.status === 'signed_in' && bridge && typeof bridge.social === 'function' ? a.email || 'signed-in' : '';
+    show($('friends-item'), !!key);
+    show($('social-settings'), !!key);
+    if (key === socialAccount) return;
+    socialAccount = key;
+    profileRequest++;
+    friendRequest++;
+    privacySaving = false;
+    selfProfile = null;
+    displaySelf();
+    $('account-social-status').textContent = '';
+    $('friends-results').replaceChildren();
+    if ($('dlg-friends').open) $('dlg-friends').close();
+    if (key) readSelf();
+  }
+
+  function addFriendAction(container, label, action, row) {
+    var button = el('button', 'btn btn-small', label);
+    button.type = 'button';
+    button.setAttribute('aria-label', label + ' · ' + (row.name || 'Jogador'));
+    button.addEventListener('click', async function () {
+      var seq = friendRequest;
+      Array.from(container.children).forEach(function (b) { b.disabled = true; });
+      var res = await social(action, row.id);
+      if (seq !== friendRequest) return;
+      if (res.ok) loadFriends();
+      else {
+        $('friends-status').textContent = res.error || 'Não foi possível atualizar a amizade.';
+        Array.from(container.children).forEach(function (b) { b.disabled = false; });
+      }
+    });
+    container.appendChild(button);
+  }
+
+  function friendRow(row) {
+    var li = el('li', 'social-person');
+    var name = row.name || 'Jogador';
+    var badge = avatar(name, row.id, 'md');
+    paintPhoto(badge, row.photo);
+    li.appendChild(badge);
+    var detail = el('div', 'friend-detail');
+    detail.appendChild(el('strong', '', name));
+    var labels = { friend: 'Amigo', incoming: 'Pedido recebido', outgoing: 'Pedido enviado' };
+    if (labels[row.state]) detail.appendChild(el('small', 'caption', labels[row.state]));
+    li.appendChild(detail);
+    var actions = el('div', 'friend-actions');
+    if (row.state === 'none') addFriendAction(actions, 'Adicionar', 'send', row);
+    if (row.state === 'incoming') {
+      addFriendAction(actions, 'Aceitar', 'accept', row);
+      addFriendAction(actions, 'Recusar', 'remove', row);
+    }
+    if (row.state === 'outgoing') addFriendAction(actions, 'Cancelar pedido', 'remove', row);
+    if (row.state === 'friend') addFriendAction(actions, 'Desfazer amizade', 'remove', row);
+    li.appendChild(actions);
+    return li;
+  }
+
+  async function loadFriends() {
+    var seq = ++friendRequest;
+    var results = $('friends-results');
+    var status = $('friends-status');
+    results.replaceChildren();
+    if (friendTab === 'search' && !friendQuery) {
+      status.textContent = 'Digite pelo menos duas letras do apelido.';
+      return;
+    }
+    status.textContent = 'Buscando…';
+    var search = friendTab === 'search';
+    var res = await social(search ? 'search' : 'list', search ? friendQuery : null);
+    if (seq !== friendRequest || !$('dlg-friends').open) return;
+    if (!res.ok) { status.textContent = res.error || 'Não foi possível carregar as pessoas.'; return; }
+    var rows = (res.rows || []).filter(function (row) {
+      if (search) return row.state !== 'self';
+      return friendTab === 'friend' ? row.state === 'friend' : ['incoming', 'outgoing'].includes(row.state);
+    });
+    rows.forEach(function (row) { results.appendChild(friendRow(row)); });
+    status.textContent = rows.length ? '' : search ? 'Nenhuma pessoa encontrada com esse apelido.' :
+      friendTab === 'pending' ? 'Você não tem pedidos pendentes.' : 'Você ainda não adicionou amigos.';
+  }
+
+  function selectFriendTab(tab) {
+    friendTab = tab;
+    show($('person-search'), tab === 'search');
+    document.querySelectorAll('[data-friends]').forEach(function (btn) {
+      btn.setAttribute('aria-pressed', String(btn.dataset.friends === tab));
+    });
+    if (tab === 'search') $('person-name').focus();
+    loadFriends();
+  }
+
+  $('btn-friends').addEventListener('click', function () {
+    friendQuery = '';
+    $('person-name').value = '';
+    openDialog($('dlg-friends'));
+    selectFriendTab('friend');
+  });
+  document.querySelectorAll('[data-friends]').forEach(function (btn) {
+    btn.addEventListener('click', function () { selectFriendTab(btn.dataset.friends); });
+  });
+  $('person-search').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    friendQuery = $('person-name').value.trim();
+    if ([...friendQuery].length < 2) friendQuery = '';
+    loadFriends();
+  });
+  $('dlg-friends').addEventListener('close', function () { friendRequest++; });
+
+  $('account-discoverable').addEventListener('change', async function () {
+    var key = socialAccount;
+    var checked = this.checked;
+    privacySaving = true;
+    this.disabled = true;
+    var res = await social('privacy', checked);
+    if (key !== socialAccount) return;
+    privacySaving = false;
+    if (res.ok && selfProfile) selfProfile.discoverable = checked;
+    $('account-social-status').textContent = res.ok ? 'Privacidade atualizada.' : res.error;
+    displaySelf();
+  });
+
+  async function preparePhoto(file) {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 8 * 1024 * 1024) {
+      throw new Error('Escolha uma imagem JPG, PNG ou WebP de até 8 MB.');
+    }
+    var bitmap;
+    try { bitmap = await createImageBitmap(file); }
+    catch (_) { throw new Error('Não foi possível abrir a imagem. Escolha outro arquivo.'); }
+    try {
+      var canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 192;
+      var ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#131726';
+      ctx.fillRect(0, 0, 192, 192);
+      var side = Math.min(bitmap.width, bitmap.height);
+      ctx.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, 192, 192);
+      return canvas.toDataURL('image/jpeg', 0.78);
+    } finally { bitmap.close(); }
+  }
+
+  function photoControl(inputId, statusId, action) {
+    var input = $(inputId);
+    var clear = $(inputId + '-clear');
+    async function save(file) {
+      var key = socialAccount;
+      var groupId = groupInfo() && groupInfo().id;
+      var isCurrent = function () { return key === socialAccount && (action !== 'groupPhoto' || groupId === (groupInfo() && groupInfo().id)); };
+      input.disabled = clear.disabled = true;
+      $(statusId).textContent = 'Salvando foto…';
+      try {
+        var photo = file ? await preparePhoto(file) : null;
+        if (!isCurrent()) return;
+        var res = await social(action, photo);
+        if (!isCurrent()) return;
+        if (!res.ok) throw new Error(res.error || 'Não foi possível salvar a foto.');
+        if (action === 'profilePhoto') await readSelf();
+        if (groupInfo()) applyResult(await call(function () { return bridge.refreshGroup(); }));
+        if (isCurrent()) $(statusId).textContent = photo ? 'Foto atualizada.' : 'Foto removida.';
+      } catch (err) {
+        if (isCurrent()) $(statusId).textContent = err.message || 'Não foi possível salvar a foto.';
+      } finally {
+        input.value = '';
+        input.disabled = clear.disabled = false;
+      }
+    }
+    input.addEventListener('change', function () { if (input.files[0]) save(input.files[0]); });
+    clear.addEventListener('click', function () { save(null); });
+  }
+
+  photoControl('account-photo', 'account-social-status', 'profilePhoto');
+  photoControl('group-photo', 'group-photo-status', 'groupPhoto');
+  $('btn-group-settings').addEventListener('click', function () {
+    closeGroupMenu(false);
+    $('group-photo-status').textContent = '';
+    openDialog($('dlg-group-settings'));
   });
 
   /* ---------- inicialização ---------- */

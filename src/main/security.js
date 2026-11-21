@@ -1,11 +1,6 @@
 'use strict';
 
-const ALLOWED_EXTERNAL_HOSTS = Object.freeze([
-  'opendota.com',
-  'www.opendota.com',
-  'steamcommunity.com',
-  'docs.opendota.com',
-]);
+const { ALLOWED_EXTERNAL_HOSTS, isAllowedExternalUrl } = require('../core/externalUrl');
 
 const APP_ORIGIN_PREFIX = 'app://ghost-rank/';
 const APP_ORIGIN = 'app://ghost-rank';
@@ -14,21 +9,6 @@ const THUMBNAIL_SIZE = Object.freeze({ width: 320, height: 180 });
 const THUMBNAIL_QUALITY = 60;
 const MAX_THUMBNAIL_CHARS = 300 * 1024;
 const MAX_SOURCES = 100;
-
-/** Link externo permitido: https, sem credenciais, host na allowlist. */
-function isAllowedExternalUrl(value) {
-  if (typeof value !== 'string' || value.length > 2000) return false;
-  let url;
-  try {
-    url = new URL(value);
-  } catch {
-    return false;
-  }
-  if (url.protocol !== 'https:') return false;
-  if (url.username || url.password) return false;
-  if (url.port && url.port !== '443') return false;
-  return ALLOWED_EXTERNAL_HOSTS.includes(url.hostname.toLowerCase());
-}
 
 /** URL pertence ao protocolo interno do app. */
 function isAppUrl(value) {

@@ -12,6 +12,7 @@ const { createController } = require('./controller');
 const { loadConfig } = require('./config');
 const { createAuthClient } = require('./auth');
 const { createSessionManager } = require('./session');
+const { createSocialClient } = require('./social');
 const { createProfileClient } = require('./profile');
 const { createAccountService } = require('./account');
 const { createGroupClient, createGroupService, safeErrorCode } = require('./group');
@@ -72,6 +73,7 @@ if (!app.requestSingleInstanceLock()) {
     // Contas: qualquer falha aqui deixa só as contas indisponíveis; o rastreador segue normal.
     account = createAccountService({});
     let session = null;
+    let social = null;
     let voice = null;
     let steam = null;
     group = createGroupService({});
@@ -100,6 +102,7 @@ if (!app.requestSingleInstanceLock()) {
         };
         const common = { supabaseUrl: config.supabaseUrl, anonKey: config.anonKey, getAccessToken };
         const profile = createProfileClient(common);
+        social = createSocialClient(common);
         chatFeed = createChatFeed({ client: createChatClient(common), onChange: pushUpdate });
         group = createGroupService({
           client: createGroupClient(common),
@@ -130,6 +133,7 @@ if (!app.requestSingleInstanceLock()) {
       if (chatFeed) chatFeed.stop();
       chatFeed = null;
       session = null;
+      social = null;
       voice = null;
       steam = null;
     }
@@ -156,7 +160,7 @@ if (!app.requestSingleInstanceLock()) {
       },
     } : null;
     unregisterIpc = registerIpc(controller, {
-      account, session, group, chatFeed, voice, picker, steam: steamService,
+      account, session, social, group, chatFeed, voice, picker, steam: steamService,
     });
 
     createWindow();

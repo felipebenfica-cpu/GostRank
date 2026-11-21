@@ -32,7 +32,7 @@ test('preload expõe exatamente os métodos esperados e nada de ipcRenderer', ()
   assert.deepEqual(Object.keys(exposed.ghostRank).sort(), [
     'correctMmr', 'createGroup', 'createInvite', 'deleteAccount', 'getView', 'joinGroup', 'leaveGroup',
     'linkSteam', 'listScreenSources', 'onUpdate', 'pickScreenSource', 'recover', 'refreshGroup', 'removeMember',
-    'reset', 'sendMessage', 'setup', 'signIn', 'signOut', 'signUp', 'sync', 'updateProfile', 'updateSettings',
+    'reset', 'sendMessage', 'setup', 'signIn', 'signOut', 'signUp', 'social', 'sync', 'updateProfile', 'updateSettings',
     'voiceToken',
   ]);
   for (const v of Object.values(exposed.ghostRank)) assert.equal(typeof v, 'function');

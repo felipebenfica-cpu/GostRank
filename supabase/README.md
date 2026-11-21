@@ -49,7 +49,7 @@ Faca estes passos **depois** do `0001_perfis.sql`, uma unica vez.
 
 Pode rodar de novo sem problema. Se aparecer erro em vermelho, nao mexa em mais nada e envie o texto do erro.
 
-### O que o 0002 faz
+### O que o 0002 faz antes da atualização social
 
 - Cada pessoa pode estar em **um** grupo so, com no maximo **10** membros. O grupo tem um dono.
 - So o dono cria convites. O codigo tem 10 letras/numeros (sem letras que confundem, como O/0 e I/1), vale **7 dias** e serve para ate **5** pessoas.
@@ -59,6 +59,10 @@ Pode rodar de novo sem problema. Se aparecer erro em vermelho, nao mexa em mais 
 - O resumo do MMR de alguem so aparece para os colegas se a privacidade dessa pessoa for "grupo" ou "amigos". Com "ninguem", fica escondido.
 - Chat: no maximo 10 mensagens a cada 10 segundos por pessoa. Mensagens nao podem ser editadas; cada um apaga so as suas.
 - Apagar a conta apaga tudo da pessoa (perfil, mensagens, resumo de MMR). Se ela era dona de um grupo, a posse passa para o membro mais antigo.
+
+### Atualização de convites, amigos e fotos (0003)
+
+Depois de aplicar o 0002, execute [0003_social.sql](migrations/0003_social.sql) no SQL Editor do mesmo projeto. A atualização permite reutilizar o código de convite sem prazo nem limite de usos. A capacidade do grupo continua em dez membros. A busca por apelido, os pedidos de amizade, a privacidade da descoberta e as fotos de perfil e grupo usam o mesmo banco no app e no site.
 
 ## 5. Publicar as funcoes do servidor (Edge Functions)
 

@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('ghostRank', {
   recover: (data) => ipcRenderer.invoke('gr:auth:recover', data),
   updateProfile: (data) => ipcRenderer.invoke('gr:profile:update', data),
   deleteAccount: () => ipcRenderer.invoke('gr:account:delete', { confirm: true }),
+  social: (action, value) => ipcRenderer.invoke('gr:social', { action, value }),
   createGroup: (name) => ipcRenderer.invoke('gr:group:create', { name }),
   joinGroup: (code) => ipcRenderer.invoke('gr:group:join', { code }),
   leaveGroup: () => ipcRenderer.invoke('gr:group:leave', { confirm: true }),
