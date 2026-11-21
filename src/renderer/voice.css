@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Ghost Rank - sala de voz (palco, canal, painel de conexão, controles, seletor).
+   LUMENEX - sala de voz (palco, canal, painel de conexão, controles, seletor).
    Usa só os tokens de :root em styles.css. Sem recursos externos.
    ========================================================================== */
 
@@ -867,3 +867,7 @@
 .vc-conn-info { min-width: 0; }
 @media (forced-colors: active) { .vc-ctl-lg.is-active { outline: 2px solid Highlight; } }
 .vs-root .btn { display: inline-flex; align-items: center; gap: var(--space-2); }
+
+/* ---- LUMENEX: avatar com moldura (GhostLook) ------------------------------ */
+.vc-avatar.vc-avatar-look { overflow: visible; background: transparent; border: 0; }
+.vc-avatar.vc-avatar-look > * { width: 100% !important; height: 100% !important; }

@@ -1,4 +1,4 @@
-/* Ghost Rank — Configurações (Etapa 6, frente R3).
+/* LUMENEX — Configurações (Etapa 6, frente R3; Etapa 7: Personalização do Perfil, tema AMOLED, canais por arrastar).
    Modal de tela cheia no modelo de uso do Discord: seções à esquerda, conteúdo à direita,
    fechar com ESC, foco preso, barra de "alterações não salvas".
    API: GhostSettings.init({bridge, getView, onClose}) · openUser(tab) · openServer(serverId, tab)
@@ -137,7 +137,7 @@
     return wrap;
   }
 
-  var COLOR_NAMES = ['Violeta', 'Verde-fantasma', 'Azul', 'Rosa', 'Laranja', 'Âmbar', 'Vermelho', 'Ardósia'];
+  var COLOR_NAMES = ['Violeta', 'Verde-jade', 'Azul', 'Rosa', 'Laranja', 'Âmbar', 'Vermelho', 'Ardósia'];
 
   var STATUS_LABEL = { online: 'Online', idle: 'Ausente', dnd: 'Não perturbe', invisible: 'Invisível', offline: 'Offline' };
   var ROLE_LABEL = { owner: 'Dono', admin: 'Admin', member: 'Membro' };
@@ -229,6 +229,7 @@
     { group: 'Configurações de usuário', items: [
       { id: 'account', label: 'Minha conta' },
       { id: 'profile', label: 'Perfil' },
+      { id: 'look', label: 'Personalização do Perfil' },
       { id: 'privacy', label: 'Privacidade' },
     ] },
     { group: 'Configurações do app', items: [
@@ -260,7 +261,7 @@
   }
 
   var TITLES = {
-    account: 'Minha conta', profile: 'Perfil', privacy: 'Privacidade', voice: 'Voz e vídeo',
+    account: 'Minha conta', profile: 'Perfil', look: 'Personalização do Perfil', privacy: 'Privacidade', voice: 'Voz e vídeo',
     notifications: 'Notificações', appearance: 'Aparência', keybinds: 'Atalhos',
     overview: 'Visão geral do servidor', channels: 'Canais', members: 'Membros', invites: 'Convites',
     bans: 'Banimentos', delete: 'Excluir servidor',
@@ -347,6 +348,10 @@
       try { window.GhostVoice.destroySettings(); } catch (e) { /* opcional */ }
     }
     S.voiceMounted = false;
+    if (S.lookEditor) {
+      try { S.lookEditor.destroy(); } catch (e2) { /* opcional */ }
+      S.lookEditor = null;
+    }
   }
 
   function renderAll(focusTitle) {
@@ -359,6 +364,7 @@
     var v = view();
     var slice;
     if (S.kind === 'user') {
+      if (S.tab === 'look') return 'user:look';   // o editor se atualiza sozinho (update), sem redesenhar a aba
       if (S.tab === 'account') slice = [v.me, v.auth && v.auth.email];
       else if (S.tab === 'profile') slice = [v.me];
       else if (S.tab === 'privacy') slice = [v.auth && v.auth.mmrVisibility, (v.friends || []).filter(function (f) { return f.relation === 'blocked'; })];
@@ -414,15 +420,18 @@
   function isDirty() {
     var f = S.form;
     if (!f) return false;
+    if (f.custom) { try { return Boolean(f.isDirty()); } catch (e) { return false; } }
     var cur;
     try { cur = f.read(); } catch (e) { return false; }
     return !sameJson(cur, f.initial) || Boolean(f.extraDirty());
   }
 
   function checkDirty() {
-    var dirty = isDirty();
     var bar = S.els.unsaved;
     if (!bar) return;
+    // Abas com barra própria (Personalização do Perfil) não usam a barra global.
+    if (S.form && S.form.custom) { bar.hidden = true; return; }
+    var dirty = isDirty();
     if (dirty && bar.hidden) {
       bar.hidden = false;
       showError(S.els.unsavedErr, '');
@@ -436,6 +445,7 @@
   }
 
   function nudgeUnsaved() {
+    if (S.form && S.form.custom) { try { S.form.nudge(); } catch (e) { /* editor */ } return; }
     var bar = S.els.unsaved;
     if (!bar || bar.hidden) return;
     bar.classList.remove('is-nudge');
@@ -720,16 +730,21 @@
     var u = user || {};
     var c = Number.isInteger(u.avatarColor) ? u.avatarColor : 0;
     var status = u.status || 'online';
+    var GL = window.GhostLook;
+    // Com a Personalização do Perfil carregada, o cartão mostra banner, recorte e moldura de verdade.
+    var bannerEl = GL ? GL.banner(u, { animate: 'always' }) : h('div', { class: 'gs-card-banner', attrs: { 'data-c': c, 'aria-hidden': 'true' } });
+    if (GL) bannerEl.classList.add('gs-card-banner');
+    var avEl = GL && !o.previewUrl ? GL.avatar(u, { size: 80, animate: 'always' }) : avatar(o.previewUrl ? { avatarUrl: o.previewUrl } : u, 'xl');
     var card = h('div', { class: 'gs-card' + (o.compact ? ' is-compact' : '') },
-      h('div', { class: 'gs-card-banner', attrs: { 'data-c': c, 'aria-hidden': 'true' } }),
+      bannerEl,
       h('div', { class: 'gs-card-head' },
-        h('span', { class: 'gs-card-av' },
-          avatar(o.previewUrl ? { avatarUrl: o.previewUrl } : u, 'xl'),
+        h('span', { class: 'gs-card-av' + (GL ? ' has-look' : ''), attrs: GL ? { 'data-gl-anchor': '' } : null },
+          avEl,
           h('span', { class: 'gs-status-dot', attrs: { 'data-s': status === 'invisible' ? 'offline' : status, title: STATUS_LABEL[status] || '' } }),
           h('span', { class: 'gs-sr', text: 'Status: ' + (STATUS_LABEL[status] || 'Online') })),
         o.action || null),
       h('div', { class: 'gs-card-body' },
-        h('div', { class: 'gs-card-name', text: u.displayName || u.username || 'Fantasma' }),
+        h('div', { class: 'gs-card-name', text: u.displayName || u.username || 'Jogador' }),
         h('div', { class: 'gs-card-user', text: u.username ? '@' + u.username : '' }),
         u.customStatus ? h('div', { class: 'gs-card-custom', text: u.customStatus }) : null,
         o.showAbout && u.about ? h('div', { class: 'gs-card-about' }, h('div', { class: 'gs-card-label', text: 'Sobre mim' }), h('p', { text: u.about })) : null));
@@ -810,7 +825,7 @@
       var name = u.username || u.displayName || '';
       openDialog({
         title: 'Excluir conta',
-        body: 'Tem certeza? Tudo o que é seu no Ghost Rank será apagado para sempre.',
+        body: 'Tem certeza? Tudo o que é seu no LUMENEX será apagado para sempre.',
         requireText: name,
         confirmLabel: 'Excluir conta',
         danger: true,
@@ -826,7 +841,6 @@
   function renderProfile(panel) {
     var u = me();
     if (!u) { panel.appendChild(h('p', { class: 'gs-muted', text: 'Entre na sua conta para editar o perfil.' })); return; }
-    var pending = { file: null, remove: false };
     var state = { avatarColor: Number.isInteger(u.avatarColor) ? u.avatarColor : 0 };
     var previewHost = h('div', { class: 'gs-preview-col' });
     var grid = h('div', { class: 'gs-profile-grid' });
@@ -835,45 +849,11 @@
     var about = textInput(u.about || '', { multiline: true, max: 190, rows: 4, fk: 'pf-about', spellcheck: true, placeholder: 'Conte um pouco sobre você (heróis, rotas, horários)…', onInput: function () { checkDirty(); refreshPreview(); } });
     var custom = textInput(u.customStatus || '', { max: 128, fk: 'pf-custom', placeholder: 'Ex.: subindo para Divino 🔥', onInput: function () { checkDirty(); refreshPreview(); } });
 
-    var avErr = errorBox();
-    var file = h('input', { class: 'gs-sr', attrs: { type: 'file', accept: 'image/png,image/jpeg,image/webp,image/gif', tabindex: '-1', 'aria-hidden': 'true' } });
-    file.addEventListener('change', function () {
-      var f = file.files && file.files[0];
-      file.value = '';
-      showError(avErr, '');
-      readImage(f, 2 * 1048576).then(function (r) {
-        if (r.error) { showError(avErr, r.error); return; }
-        pending.file = r;
-        pending.remove = false;
-        checkDirty();
-        refreshPreview();
-        renderAvatarButtons();
-        announce('Imagem escolhida. Salve para aplicar.');
-      });
-    });
-    var avButtons = h('div', { class: 'gs-btn-row' });
-    function renderAvatarButtons() {
-      clear(avButtons);
-      avButtons.appendChild(btn('Enviar imagem', 'btn-primary btn-small', function () { file.click(); }, { fk: 'pf-upload' }));
-      var hasImg = (pending.file) || (u.avatarUrl && !pending.remove);
-      if (hasImg) {
-        avButtons.appendChild(h('button', { class: 'gs-link-btn', attrs: { type: 'button', 'data-fk': 'pf-remove' }, text: 'Remover imagem', on: { click: function () {
-          if (pending.file) pending.file = null; else pending.remove = true;
-          checkDirty();
-          refreshPreview();
-          renderAvatarButtons();
-          var up = S.root.querySelector('[data-fk="pf-upload"]');
-          if (up) up.focus();
-        } } }));
-      }
-    }
-    renderAvatarButtons();
-
-    var avSec = section('Avatar', 'Imagem quadrada de até 2 MB (PNG, JPG, WEBP ou GIF). Sem imagem, usamos a cor com a sua inicial.');
-    avSec.appendChild(avButtons);
-    avSec.appendChild(file);
-    avSec.appendChild(avErr);
+    var avSec = section('Avatar, banner e efeitos', 'Foto e banner de até 40 MB (inclusive GIF e WebP animados), moldura e efeito especial ficam em Personalização do Perfil.');
+    avSec.appendChild(h('div', { class: 'gs-btn-row' },
+      btn('Abrir Personalização do Perfil', 'btn-primary btn-small', function () { goTab('look'); }, { fk: 'pf-open-look' })));
     avSec.appendChild(colorPicker('Cor do perfil', 'pf-color', state.avatarColor, function (c) { state.avatarColor = c; checkDirty(); refreshPreview(); }));
+    avSec.appendChild(h('p', { class: 'gs-hint', text: 'A cor aparece no lugar do avatar e do banner quando você não usa imagem.' }));
     left.appendChild(avSec);
 
     var stSec = section(null);
@@ -889,13 +869,11 @@
     function refreshPreview() {
       clear(previewHost);
       previewHost.appendChild(h('div', { class: 'gs-label', text: 'Prévia' }));
-      var draft = {
-        displayName: u.displayName, username: u.username, status: u.status,
+      var draft = Object.assign({}, u, {
         avatarColor: state.avatarColor,
-        avatarUrl: pending.remove ? null : u.avatarUrl,
         customStatus: custom.value.trim(), about: about.value.trim(),
-      };
-      previewHost.appendChild(profileCard(draft, { showAbout: true, compact: true, previewUrl: pending.file ? pending.file.preview : null }));
+      });
+      previewHost.appendChild(profileCard(draft, { showAbout: true, compact: true }));
     }
     refreshPreview();
 
@@ -907,14 +885,7 @@
       function () { return { about: about.value.trim(), custom: custom.value.trim(), color: state.avatarColor }; },
       function (cur) {
         var chain = Promise.resolve(null);
-        if (pending.file) {
-          var f = pending.file;
-          chain = chain.then(function () { return call('uploadAvatar', { name: f.name, mime: f.mime, data: f.data }).then(function (r) { return r.ok ? null : r.error; }); });
-        } else if (pending.remove) {
-          chain = chain.then(function () { return call('removeAvatar').then(function (r) { return r.ok ? null : r.error; }); });
-        }
-        chain = chain.then(function (err) {
-          if (err) return err;
+        chain = chain.then(function () {
           var patch = {};
           if (cur.about !== (u.about || '')) patch.about = cur.about;
           if (cur.color !== u.avatarColor) patch.avatarColor = cur.color;
@@ -926,9 +897,24 @@
           if (cur.custom === (u.customStatus || '')) return null;
           return call('setCustomStatus', cur.custom || null).then(function (r) { return r.ok ? null : r.error; });
         });
-        return chain.then(function (err) { if (!err) { pending.file = null; pending.remove = false; } return err; });
-      },
-      function () { return Boolean(pending.file || pending.remove); });
+        return chain;
+      });
+  }
+
+  function renderLook(panel) {
+    if (!me()) { panel.appendChild(h('p', { class: 'gs-muted', text: 'Entre na sua conta para personalizar o perfil.' })); return; }
+    var GL = window.GhostLook;
+    if (!GL || typeof GL.renderEditor !== 'function') {
+      panel.appendChild(h('p', { class: 'gs-muted', text: 'A personalização do perfil não carregou. Feche e abra o LUMENEX de novo.' }));
+      return;
+    }
+    panel.appendChild(h('p', { class: 'gs-hint gs-section-desc', text: 'Tudo aqui é gratuito e aparece só no seu perfil e no seu cartão — o resto do app continua com o tema que você escolheu em Aparência.' }));
+    var host = h('div', { class: 'gs-look-host' });
+    panel.appendChild(host);
+    var editor = GL.renderEditor(host, { bridge: S.bridge, getView: view, onDirtyChange: function () { checkDirty(); } });
+    S.lookEditor = editor;
+    S.form = { custom: true, isDirty: function () { return editor.isDirty(); }, nudge: function () { editor.nudge(); } };
+    checkDirty();
   }
 
   function renderPrivacy(panel) {
@@ -1008,7 +994,7 @@
     var n = prefs().notifications;
     var err = errorBox();
     var sec = section('Notificações');
-    sec.appendChild(toggle('Notificações na área de trabalho', 'Avisa de menções e mensagens diretas quando o Ghost Rank está em segundo plano.', n.desktop, function (on) {
+    sec.appendChild(toggle('Notificações na área de trabalho', 'Avisa de menções e mensagens diretas quando o LUMENEX está em segundo plano.', n.desktop, function (on) {
       if (on && typeof window.Notification === 'function' && window.Notification.permission === 'default') {
         try { window.Notification.requestPermission(); } catch (e) { /* ok */ }
       }
@@ -1042,12 +1028,12 @@
 
     var fsec = section('Tamanho da fonte do chat');
     var sample = h('div', { class: 'gs-sample' + (a.compact ? ' is-compact' : '') });
-    var u = me() || { displayName: 'Fantasma', avatarColor: 1 };
+    var u = me() || { displayName: 'Jogador', avatarColor: 1 };
     sample.appendChild(h('div', { class: 'gs-sample-msg' },
       avatar(u, 'md'),
       h('div', null,
-        h('div', { class: 'gs-sample-head' }, h('span', { class: 'gs-sample-name', text: u.displayName || 'Fantasma' }), h('span', { class: 'gs-sample-time', text: 'Hoje às 21:47' })),
-        h('div', { class: 'gs-sample-body', text: 'Bora uma ranked? Tô com 87% de vitória de Invoker essa semana 👻' }))));
+        h('div', { class: 'gs-sample-head' }, h('span', { class: 'gs-sample-name', text: u.displayName || 'Jogador' }), h('span', { class: 'gs-sample-time', text: 'Hoje às 21:47' })),
+        h('div', { class: 'gs-sample-body', text: 'Bora uma ranked? Tô com 87% de vitória de Invoker essa semana ⚡' }))));
     function applyScale(v) { sample.style.setProperty('--gs-sample-scale', String(v / 100)); }
     applyScale(a.fontScale);
     var rangeId = nextId('gs-range');
@@ -1088,7 +1074,7 @@
   ];
 
   function renderKeybinds(panel) {
-    panel.appendChild(h('p', { class: 'gs-hint gs-section-desc', text: 'Atalhos do teclado do Ghost Rank. Funcionam com a janela em foco.' }));
+    panel.appendChild(h('p', { class: 'gs-hint gs-section-desc', text: 'Atalhos do teclado do LUMENEX. Funcionam com a janela em foco.' }));
     var table = h('table', { class: 'gs-table gs-keys' });
     table.appendChild(h('caption', { class: 'gs-sr', text: 'Atalhos do teclado' }));
     table.appendChild(h('thead', null, h('tr', null, h('th', { attrs: { scope: 'col' }, text: 'Ação' }), h('th', { attrs: { scope: 'col' }, text: 'Atalho' }))));
@@ -1511,7 +1497,7 @@
       codeEl.addEventListener('focus', function () { codeEl.select(); });
       var copyBtn = btn('Copiar', 'btn-primary btn-small', function () { copyText(inv.code, copyBtn); }, { fk: 'iv-copy', icon: 'copy' });
       resultHost.appendChild(h('div', { class: 'gs-code-row' }, codeEl, copyBtn));
-      resultHost.appendChild(h('p', { class: 'gs-hint', text: 'Envie este código para a pessoa. Ela entra pelo botão "+" no Ghost Rank. ' +
+      resultHost.appendChild(h('p', { class: 'gs-hint', text: 'Envie este código para a pessoa. Ela entra pelo botão "+" no LUMENEX. ' +
         (inv.expiresAt ? 'Expira ' + relTime(inv.expiresAt) + '. ' : 'Nunca expira. ') +
         (inv.maxUses ? 'Vale para ' + inv.maxUses + (inv.maxUses === 1 ? ' uso.' : ' usos.') : 'Usos ilimitados.') }));
     }
@@ -1743,7 +1729,7 @@
   }
 
   function openUser(tab) {
-    var t = RENDER[tab] && ['account', 'profile', 'privacy', 'voice', 'notifications', 'appearance', 'keybinds'].indexOf(tab) >= 0 ? tab : 'account';
+    var t = RENDER[tab] && ['account', 'profile', 'look', 'privacy', 'voice', 'notifications', 'appearance', 'keybinds'].indexOf(tab) >= 0 ? tab : 'account';
     openWith('user', t);
   }
 
@@ -1812,6 +1798,7 @@
       }
     }
     if (S.kind === 'user' && !me()) { close(true); return; }
+    if (S.lookEditor) { try { S.lookEditor.update(view()); } catch (e) { /* editor */ } }
     if (isDirty() || S.dialog) return;
     var sig = tabSignature();
     if (sig !== S.sig) renderPanel(false);

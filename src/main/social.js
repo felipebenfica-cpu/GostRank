@@ -1,15 +1,19 @@
 'use strict';
 
 // Etapa 6: amigos, busca de pessoas, DMs, meu perfil (nome de usuário, sobre mim, status, avatar).
+// Etapa 7 (LUMENEX): avatar e banner até 40 MB (upload resumível com progresso), animados, recorte,
+// moldura, efeito do perfil e tema salvo na conta.
 
 const { appError, isUuid } = require('./rest');
-const { PROFILE_COLS, USERNAME_RE, selectWithPhoto } = require('./users');
+const { USERNAME_RE, selectProfiles, cleanCrop, FRAMES, EFFECTS, THEMES } = require('./users');
 const { validateUpload } = require('./files');
 
 const RELATIONS = Object.freeze(['friend', 'pending_in', 'pending_out', 'blocked']);
 const STATUSES = Object.freeze(['online', 'idle', 'dnd', 'invisible']);
 const CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const MAX_DMS = 100;
+const MEDIA_KINDS = Object.freeze(['avatar', 'banner']);
+const PROGRESS_STEP = 0.02; // atualiza a tela a cada 2% (não a cada bloco de bytes)
 
 function uuid() {
   return globalThis.crypto.randomUUID();
@@ -38,8 +42,15 @@ function optionalText(v, max) {
   return { ok: true, value: s.length ? s : null };
 }
 
+/** Banco sem a 0007 → mensagem própria (o resto do app continua). */
+function rethrow0007(err) {
+  if (err && err.code === 'needs_migration') throw appError('needs_migration_0007');
+  throw err;
+}
+
 function createSocialService({ rest, users, onChange = () => {} } = {}) {
   let meId = null;
+  const uploads = { avatar: null, banner: null };
   let relationships = []; // {id, relation, since}
   let dms = []; // {id, userId, lastMessageAt}
   let generation = 0;
@@ -49,7 +60,7 @@ function createSocialService({ rest, users, onChange = () => {} } = {}) {
   async function loadMe() {
     const { id } = await rest.identity();
     meId = id;
-    const rows = await selectWithPhoto(rest, (cols) => `/rest/v1/profiles?select=${cols}&id=eq.${id}`, PROFILE_COLS);
+    const rows = await selectProfiles(rest, (cols) => `/rest/v1/profiles?select=${cols}&id=eq.${id}`);
     users.upsertRows(rows);
     return users.get(id);
   }
@@ -69,7 +80,7 @@ function createSocialService({ rest, users, onChange = () => {} } = {}) {
       try {
         const basic = await rest.rpc('relationship_people', {});
         users.upsertRows((Array.isArray(basic) ? basic : []).filter((r) => r && missing.includes(String(r.id).toLowerCase())));
-      } catch { /* banco sem a RPC: a tela mostra "fantasma" */ }
+      } catch { /* banco sem a RPC: a tela mostra "Desconhecido" */ }
     }
     relationships = list;
   }
@@ -225,28 +236,150 @@ function createSocialService({ rest, users, onChange = () => {} } = {}) {
     await patchMe(body);
   }
 
-  async function uploadAvatar(input) {
-    const f = validateUpload(input, 'image');
-    if (!meId) await loadMe();
-    const old = users.get(meId) ? users.get(meId).avatarPath : null;
-    const path = `${meId}/${uuid()}.${f.ext}`;
-    await rest.upload('avatars', path, f.bytes, f.mime);
-    await patchMe({ avatar_path: path });
-    if (old && old.startsWith(`${meId}/`)) rest.removeObjects('avatars', [old]).catch(() => {});
+  function setUpload(kind, next) {
+    const prev = uploads[kind];
+    uploads[kind] = next;
+    if (!prev || !next || prev.status !== next.status || Math.abs((next.progress || 0) - (prev.progress || 0)) >= PROGRESS_STEP || next.progress === 1) emit();
   }
 
-  async function removeAvatar() {
+  /** Recarrega meu perfil (depois de mudar aparência/imagens). */
+  async function reloadMe() {
+    try { await loadMe(); } catch { await users.ensure([meId], { force: true }); }
+    emit();
+  }
+
+  /**
+   * Avatar ou banner (Etapa 7): valida bytes reais (até 40 MB), sobe a miniatura WebP e o original
+   * com upload resumível (progresso em view.uploads), grava com set_profile_media e apaga os antigos.
+   */
+  async function uploadMedia(kind, input) {
+    if (!MEDIA_KINDS.includes(kind)) throw appError('invalid');
+    if (uploads[kind] && (uploads[kind].status === 'uploading' || uploads[kind].status === 'processing')) throw appError('rate_limited');
+    let f;
+    let thumb;
+    try {
+      f = validateUpload(input, 'profile');
+      thumb = validateUpload({ name: 'thumb.webp', mime: input.thumb && input.thumb.mime, data: input.thumb && input.thumb.data }, 'thumb');
+    } catch (err) {
+      setUpload(kind, { status: 'error', progress: 0, error: err.message || 'Imagem inválida.' });
+      throw err;
+    }
     if (!meId) await loadMe();
-    const old = users.get(meId) ? users.get(meId).avatarPath : null;
-    await patchMe({ avatar_path: null });
-    if (old && old.startsWith(`${meId}/`)) rest.removeObjects('avatars', [old]).catch(() => {});
+    const cur = users.get(meId);
+    const oldMain = cur ? (kind === 'avatar' ? cur.avatarPath : cur.bannerPath) : null;
+    const oldThumb = cur ? (kind === 'avatar' ? cur.avatarThumbPath : cur.bannerThumbPath) : null;
+    const id = uuid();
+    const mainPath = `${meId}/${kind}/${id}.${f.ext}`;
+    const thumbPath = `${meId}/${kind}/${id}.thumb.webp`;
+    const uploaded = [];
+    setUpload(kind, { status: 'uploading', progress: 0, error: null });
+    try {
+      await rest.upload('avatars', thumbPath, thumb.bytes, 'image/webp');
+      uploaded.push(thumbPath);
+      await rest.uploadResumable('avatars', mainPath, f.bytes, f.mime, {
+        onProgress: (p) => setUpload(kind, { status: 'uploading', progress: Math.min(0.99, p), error: null }),
+      });
+      uploaded.push(mainPath);
+      setUpload(kind, { status: 'processing', progress: 1, error: null });
+      try {
+        await rest.rpc('set_profile_media', { p_kind: kind, p_path: mainPath, p_thumb_path: thumbPath, p_animated: f.animated === true });
+      } catch (err) {
+        // Banco só com a 0006: avatar até 2 MB ainda vai pelo caminho antigo; banner precisa da 0007.
+        if (err && err.code === 'needs_migration' && kind === 'avatar' && f.size <= 2 * 1024 * 1024) {
+          await patchMe({ avatar_path: mainPath });
+        } else {
+          rethrow0007(err);
+        }
+      }
+    } catch (err) {
+      if (uploaded.length) rest.removeObjects('avatars', uploaded).catch(() => {});
+      // 413 com arquivo ≤ 40 MB: o bucket ainda tem o limite antigo (sem a 0007).
+      const e = err && (err.code === 'attachment_too_big' || err.code === 'avatar_too_big') ? appError('media_needs_0007') : err;
+      setUpload(kind, { status: 'error', progress: 0, error: e && e.name === 'UserInputError' ? e.message : appError('upload_failed').message });
+      throw e && e.name === 'UserInputError' ? e : appError('upload_failed');
+    }
+    const stale = [oldMain, oldThumb].filter((p) => p && p.startsWith(`${meId}/`) && p !== mainPath && p !== thumbPath);
+    if (stale.length) rest.removeObjects('avatars', stale).catch(() => {});
+    setUpload(kind, { status: 'done', progress: 1, error: null });
+    await reloadMe();
+  }
+
+  async function removeMedia(kind) {
+    if (!MEDIA_KINDS.includes(kind)) throw appError('invalid');
+    if (!meId) await loadMe();
+    const cur = users.get(meId);
+    const main = cur ? (kind === 'avatar' ? cur.avatarPath : cur.bannerPath) : null;
+    const thumb = cur ? (kind === 'avatar' ? cur.avatarThumbPath : cur.bannerThumbPath) : null;
+    try {
+      await rest.rpc('set_profile_media', { p_kind: kind, p_path: null, p_thumb_path: null, p_animated: false });
+    } catch (err) {
+      if (err && err.code === 'needs_migration' && kind === 'avatar') await patchMe({ avatar_path: null });
+      else rethrow0007(err);
+    }
+    const stale = [main, thumb].filter((p) => p && p.startsWith(`${meId}/`));
+    if (stale.length) rest.removeObjects('avatars', stale).catch(() => {});
+    uploads[kind] = null;
+    await reloadMe();
+  }
+
+  const uploadAvatar = (input) => uploadMedia('avatar', input);
+  const uploadBanner = (input) => uploadMedia('banner', input);
+  const removeAvatar = () => removeMedia('avatar');
+  const removeBanner = () => removeMedia('banner');
+
+  /** Moldura, efeito, recorte e posição do banner (campos ausentes ficam como estão). */
+  async function updateLook(patch) {
+    if (!patch || typeof patch !== 'object') throw appError('invalid_look');
+    if (!meId) await loadMe();
+    const cur = users.get(meId) || {};
+    let frame = cur.frame ?? null;
+    let effect = cur.effect ?? null;
+    let crop = cur.avatarCrop ?? null;
+    let pos = Number.isInteger(cur.bannerPos) ? cur.bannerPos : 50;
+    if (patch.frame !== undefined) { if (patch.frame !== null && !FRAMES.includes(patch.frame)) throw appError('invalid_look'); frame = patch.frame; }
+    if (patch.effect !== undefined) { if (patch.effect !== null && !EFFECTS.includes(patch.effect)) throw appError('invalid_look'); effect = patch.effect; }
+    if (patch.avatarCrop !== undefined) {
+      if (patch.avatarCrop === null) crop = null;
+      else { crop = cleanCrop(patch.avatarCrop); if (!crop) throw appError('invalid_look'); }
+    }
+    if (patch.bannerPos !== undefined) {
+      if (!Number.isInteger(patch.bannerPos) || patch.bannerPos < 0 || patch.bannerPos > 100) throw appError('invalid_look');
+      pos = patch.bannerPos;
+    }
+    try {
+      await rest.rpc('update_profile_look', { p_frame: frame, p_effect: effect, p_avatar_crop: crop, p_banner_pos: pos });
+    } catch (err) { rethrow0007(err); }
+    await reloadMe();
+  }
+
+  async function resetLook() {
+    try { await rest.rpc('reset_profile_look', {}); } catch (err) { rethrow0007(err); }
+    await reloadMe();
+  }
+
+  /** Tema salvo na conta (falha calada: o tema local continua valendo). */
+  async function saveTheme(theme) {
+    if (!THEMES.includes(theme)) throw appError('invalid');
+    try {
+      await rest.rpc('set_appearance_theme', { p_theme: theme });
+      const u = meId ? users.get(meId) : null;
+      if (u) u.appearanceTheme = theme;
+      return true;
+    } catch { return false; }
+  }
+
+  function getUploads() {
+    return {
+      avatar: uploads.avatar ? { ...uploads.avatar } : null,
+      banner: uploads.banner ? { ...uploads.banner } : null,
+    };
   }
 
   function getMe() {
     if (!meId) return null;
     const u = users.get(meId);
     if (!u) return null;
-    return { ...users.lite(meId), about: u.about, customStatus: u.customStatus, status: u.status };
+    return { ...users.lite(meId), about: u.about, customStatus: u.customStatus, status: u.status, appearanceTheme: u.appearanceTheme || null };
   }
 
   function getFriendsView() {
@@ -263,6 +396,8 @@ function createSocialService({ rest, users, onChange = () => {} } = {}) {
   function clear() {
     generation++;
     meId = null;
+    uploads.avatar = null;
+    uploads.banner = null;
     relationships = [];
     dms = [];
   }
@@ -270,7 +405,7 @@ function createSocialService({ rest, users, onChange = () => {} } = {}) {
   return {
     refresh, refreshRelationships, refreshDms, searchUsers, sendFriendRequest, acceptFriend, declineFriend,
     removeFriend, blockUser, unblockUser, openDm, setStatus, setCustomStatus, updateProfile, uploadAvatar,
-    removeAvatar, getMe, getFriendsView, getDms, relationOf, friendIds, touchDm, clear,
+    removeAvatar, uploadBanner, removeBanner, updateLook, resetLook, saveTheme, getUploads, getMe, getFriendsView, getDms, relationOf, friendIds, touchDm, clear,
     getMeId: () => meId,
   };
 }

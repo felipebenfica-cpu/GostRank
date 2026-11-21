@@ -1,0 +1,548 @@
+/* LUMENEX — Personalização do perfil (Etapa 7, frente LOOK).
+   Molduras: só transform/opacity animados (compositor); em ≤32 px viram um anel parado.
+   Tudo para com prefers-reduced-motion. */
+
+.gl-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* ---- Avatar ------------------------------------------------------------ */
+.gl-av {
+  --gl-size: 40px;
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: var(--gl-size);
+  height: var(--gl-size);
+  border-radius: 50%;
+  vertical-align: middle;
+  isolation: isolate;
+}
+.gl-av-clip {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--av-0, #1d4740);
+  color: var(--av-fg-0, #8fe9d6);
+}
+.gl-av[data-c="1"] .gl-av-clip { background: var(--av-1, #322c61); color: var(--av-fg-1, #c4bbff); }
+.gl-av[data-c="2"] .gl-av-clip { background: var(--av-2, #24335c); color: var(--av-fg-2, #b4c5ff); }
+.gl-av[data-c="3"] .gl-av-clip { background: var(--av-3, #4a3b1e); color: var(--av-fg-3, #ffd98f); }
+.gl-av[data-c="4"] .gl-av-clip { background: var(--av-4, #1e4632); color: var(--av-fg-4, #8ff0bb); }
+.gl-av[data-c="5"] .gl-av-clip { background: var(--av-5, #4c2430); color: var(--av-fg-5, #ffb0bb); }
+.gl-av[data-c="6"] .gl-av-clip { background: var(--av-6, #164552); color: var(--av-fg-6, #8ee3f5); }
+.gl-av[data-c="7"] .gl-av-clip { background: var(--av-7, #4d3018); color: var(--av-fg-7, #ffc28f); }
+.gl-av-img { display: block; width: 100%; height: 100%; object-fit: cover; user-select: none; -webkit-user-drag: none; }
+.gl-av-initial { font-weight: 700; font-size: calc(var(--gl-size) * 0.42); line-height: 1; user-select: none; }
+.gl-status {
+  position: absolute;
+  right: -3%;
+  bottom: -3%;
+  z-index: 3;
+  width: calc(var(--gl-size) * 0.3);
+  height: calc(var(--gl-size) * 0.3);
+  min-width: 10px;
+  min-height: 10px;
+  border-radius: 50%;
+  background: var(--st-online, #3fca82);
+  box-shadow: 0 0 0 calc(var(--gl-size) * 0.055 + 1px) var(--gl-ring-bg, var(--rail-bg, #07090f));
+}
+.gl-status[data-s="idle"] { background: var(--st-idle, #f0b232); }
+.gl-status[data-s="dnd"] { background: var(--st-dnd, #f23f43); }
+.gl-status[data-s="offline"] { background: var(--st-offline, #80848e); }
+
+/* ---- Moldura: base ---------------------------------------------------- */
+.gl-frame {
+  position: absolute;
+  inset: calc(var(--gl-size) * -0.16);
+  z-index: 2;
+  border-radius: 50%;
+  pointer-events: none;
+  contain: layout style;
+}
+.gl-l { position: absolute; inset: 0; border-radius: 50%; }
+.gl-svg { width: 100%; height: 100%; overflow: visible; }
+
+/* Anel: o avatar ocupa até ~75,7% do raio da moldura; o anel fica logo por fora. */
+.gl-ring, .gl-sweep, .gl-arc, .gl-sheen, .gl-ring2 {
+  -webkit-mask: radial-gradient(closest-side, transparent 74%, #000 75.5%, #000 83.5%, transparent 85%);
+  mask: radial-gradient(closest-side, transparent 74%, #000 75.5%, #000 83.5%, transparent 85%);
+}
+.gl-glow { background: radial-gradient(closest-side, transparent 62%, var(--gl-glow, rgba(255, 196, 64, 0.5)) 77%, transparent 100%); }
+
+@keyframes gl-spin { to { transform: rotate(1turn); } }
+@keyframes gl-spin-rev { to { transform: rotate(-1turn); } }
+@keyframes gl-breathe { 0%, 100% { opacity: 0.55; transform: scale(0.97); } 50% { opacity: 1; transform: scale(1.03); } }
+@keyframes gl-flicker { 0%, 100% { opacity: 0.7; } 20% { opacity: 1; } 35% { opacity: 0.55; } 60% { opacity: 0.95; } 80% { opacity: 0.6; } }
+
+/* ---- 1. Energia dourada ----------------------------------------------- */
+.gl-frame[data-frame="gold"] { --gl-glow: rgba(255, 196, 64, 0.55); }
+.gl-frame[data-frame="gold"] .gl-glow { animation: gl-breathe 3.2s ease-in-out infinite; }
+.gl-frame[data-frame="gold"] .gl-ring {
+  background: conic-gradient(from 0deg, #6e4a0c, #f7d56e, #fff5cc, #e3ac2c, #845a10, #f3c64f, #fff1b8, #b07a18, #6e4a0c);
+  animation: gl-spin 7s linear infinite;
+}
+.gl-frame[data-frame="gold"] .gl-sweep {
+  background: conic-gradient(from 0deg, transparent 0 74%, rgba(255, 248, 214, 0) 76%, rgba(255, 252, 230, 0.95) 88%, transparent 97%);
+  animation: gl-spin 2.6s linear infinite;
+}
+.gl-orbit { animation: gl-spin 4s linear infinite; }
+.gl-spark {
+  position: absolute;
+  left: 50%;
+  top: 7.5%;
+  width: 7%;
+  height: 7%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, #fffbe6 0 30%, #ffd25a 55%, rgba(255, 190, 40, 0) 72%);
+  box-shadow: 0 0 6px 1px rgba(255, 205, 80, 0.75);
+}
+.gl-frame[data-frame="gold"] .gl-orbit.gl-i0 { animation-duration: 3.4s; }
+.gl-frame[data-frame="gold"] .gl-orbit.gl-i1 { animation-duration: 5.1s; animation-name: gl-spin-rev; animation-delay: -1.7s; }
+.gl-frame[data-frame="gold"] .gl-orbit.gl-i2 { animation-duration: 6.8s; animation-delay: -4s; }
+.gl-frame[data-frame="gold"] .gl-orbit.gl-i1 .gl-spark { width: 5%; height: 5%; }
+
+/* ---- 2. Fogo e brasas -------------------------------------------------- */
+.gl-frame[data-frame="fire"] { --gl-glow: rgba(255, 110, 30, 0.55); }
+.gl-frame[data-frame="fire"] .gl-glow { animation: gl-flicker 1.3s linear infinite; }
+.gl-frame[data-frame="fire"] .gl-ring {
+  background: conic-gradient(from 0deg, #c3200f, #ff8a1e, #ffd36a, #ff5a16, #b5180c, #ff9c2a, #ffe08a, #e2400f, #c3200f);
+  animation: gl-spin 9s linear infinite;
+}
+.gl-flame::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 15%;
+  height: 16%;
+  border-radius: 50% 50% 45% 45% / 65% 65% 35% 35%;
+  background: radial-gradient(ellipse 60% 85% at 50% 100%, #fff3c2 0, #ffc23a 32%, #ff5a1c 62%, rgba(220, 40, 20, 0) 78%);
+  transform-origin: 50% 100%;
+  transform: translateX(-50%) scaleY(0.85);
+  animation: gl-tongue 0.95s ease-in-out infinite alternate;
+}
+@keyframes gl-tongue {
+  0% { transform: translateX(-50%) scaleY(0.62) scaleX(1.05); opacity: 0.65; }
+  50% { transform: translateX(-46%) scaleY(1.05) scaleX(0.92); opacity: 1; }
+  100% { transform: translateX(-54%) scaleY(0.8) scaleX(1); opacity: 0.82; }
+}
+.gl-flame.gl-i0 { transform: rotate(-150deg); }
+.gl-flame.gl-i1 { transform: rotate(-100deg); }
+.gl-flame.gl-i2 { transform: rotate(-48deg); }
+.gl-flame.gl-i3 { transform: rotate(0deg); }
+.gl-flame.gl-i4 { transform: rotate(48deg); }
+.gl-flame.gl-i5 { transform: rotate(100deg); }
+.gl-flame.gl-i6 { transform: rotate(150deg); }
+.gl-flame.gl-i1::before, .gl-flame.gl-i4::before { animation-duration: 0.78s; animation-delay: -0.3s; }
+.gl-flame.gl-i2::before, .gl-flame.gl-i5::before { animation-duration: 1.1s; animation-delay: -0.6s; }
+.gl-flame.gl-i3::before { height: 19%; width: 17%; animation-duration: 0.86s; }
+.gl-ember::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 10%;
+  width: 3.4%;
+  height: 3.4%;
+  border-radius: 50%;
+  background: #ffcf6a;
+  box-shadow: 0 0 4px 1px rgba(255, 120, 30, 0.9);
+  animation: gl-ember 2.2s ease-out infinite;
+  opacity: 0;
+}
+@keyframes gl-ember {
+  0% { transform: translate(-50%, 0) scale(1); opacity: 0; }
+  15% { opacity: 1; }
+  100% { transform: translate(-50%, -260%) scale(0.4); opacity: 0; }
+}
+.gl-ember.gl-i0 { transform: rotate(-30deg); }
+.gl-ember.gl-i1 { transform: rotate(20deg); }
+.gl-ember.gl-i2 { transform: rotate(75deg); }
+.gl-ember.gl-i3 { transform: rotate(-80deg); }
+.gl-ember.gl-i4 { transform: rotate(135deg); }
+.gl-ember.gl-i5 { transform: rotate(-125deg); }
+.gl-ember.gl-i1::before { animation-delay: -0.6s; animation-duration: 1.8s; }
+.gl-ember.gl-i2::before { animation-delay: -1.2s; animation-duration: 2.6s; }
+.gl-ember.gl-i3::before { animation-delay: -1.7s; }
+.gl-ember.gl-i4::before { animation-delay: -0.9s; animation-duration: 2s; }
+.gl-ember.gl-i5::before { animation-delay: -1.4s; animation-duration: 2.4s; }
+
+/* ---- 3. Relâmpagos ----------------------------------------------------- */
+.gl-frame[data-frame="lightning"] { --gl-glow: rgba(90, 180, 255, 0.5); }
+.gl-frame[data-frame="lightning"] .gl-glow { animation: gl-zapglow 2.8s steps(1, end) infinite; }
+@keyframes gl-zapglow { 0%, 100% { opacity: 0.5; } 12% { opacity: 1; } 16% { opacity: 0.6; } 47% { opacity: 0.95; } 50% { opacity: 0.5; } 78% { opacity: 1; } 82% { opacity: 0.55; } }
+.gl-frame[data-frame="lightning"] .gl-ring {
+  background: repeating-conic-gradient(from 0deg, #bfeeff 0 9deg, #3a8de0 9deg 13deg, rgba(40, 110, 220, 0.35) 13deg 18deg);
+  animation: gl-spin 10s linear infinite;
+}
+.gl-frame[data-frame="lightning"] .gl-arc {
+  background: conic-gradient(from 0deg, transparent 0 82%, rgba(220, 245, 255, 0.95) 92%, transparent 100%);
+  animation: gl-spin 1.15s linear infinite;
+}
+.gl-bolts { filter: drop-shadow(0 0 1.5px #5cc8ff); }
+.gl-bolt { fill: none; stroke: #f0faff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; opacity: 0; animation: gl-zap 2.8s steps(1, end) infinite; }
+.gl-bolt.gl-i1 { animation-delay: -0.9s; }
+.gl-bolt.gl-i2 { animation-delay: -1.6s; animation-duration: 3.4s; }
+.gl-bolt.gl-i3 { animation-delay: -2.3s; animation-duration: 2.3s; }
+@keyframes gl-zap { 0%, 100% { opacity: 0; } 10% { opacity: 1; } 13% { opacity: 0.2; } 15% { opacity: 0.9; } 19% { opacity: 0; } }
+
+/* ---- 4. Magia arcana --------------------------------------------------- */
+.gl-frame[data-frame="arcane"] { --gl-glow: rgba(170, 110, 255, 0.5); }
+.gl-frame[data-frame="arcane"] .gl-glow { animation: gl-breathe 3.6s ease-in-out infinite; }
+.gl-runes { animation: gl-spin 20s linear infinite; }
+.gl-runes-in { animation: gl-spin-rev 12s linear infinite; }
+.gl-rune-ring { fill: none; stroke: #b48cff; stroke-width: 1.3; opacity: 0.9; }
+.gl-rune-dash { fill: none; stroke: #e2c8ff; stroke-width: 0.8; stroke-dasharray: 1.6 3.2; opacity: 0.85; }
+.gl-rune-thin { fill: none; stroke: rgba(196, 150, 255, 0.85); stroke-width: 2.4; }
+.gl-rune-node { fill: #f7e3ff; filter: drop-shadow(0 0 1.4px #c08bff); }
+.gl-glyph { fill: none; stroke: #f0dcff; stroke-width: 0.9; stroke-linecap: round; filter: drop-shadow(0 0 1px #a875ff); }
+
+/* ---- 5. Sombras -------------------------------------------------------- */
+.gl-frame[data-frame="shadow"] .gl-ring {
+  background: conic-gradient(from 0deg, #120a1e, #4b2c70, #0a0611, #2e1a47, #6a3f98, #0d0816, #120a1e);
+  animation: gl-spin 14s linear infinite;
+}
+.gl-wisp::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 2%;
+  width: 46%;
+  height: 34%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(28, 12, 44, 0.95), rgba(60, 30, 92, 0.55) 55%, rgba(10, 4, 18, 0) 100%);
+  filter: blur(2px);
+  transform: translateX(-50%);
+  animation: gl-wispb 4.2s ease-in-out infinite;
+}
+@keyframes gl-wispb { 0%, 100% { transform: translateX(-50%) scale(0.85); opacity: 0.6; } 50% { transform: translateX(-50%) scale(1.12); opacity: 1; } }
+.gl-wisp { animation: gl-spin 11s linear infinite; }
+.gl-wisp.gl-i1 { animation-duration: 15s; animation-delay: -3s; }
+.gl-wisp.gl-i2 { animation-duration: 9s; animation-name: gl-spin-rev; animation-delay: -5s; }
+.gl-wisp.gl-i3 { animation-duration: 13s; animation-delay: -8s; }
+.gl-wisp.gl-i4 { animation-duration: 17s; animation-name: gl-spin-rev; animation-delay: -2s; }
+.gl-wisp.gl-i1::before { animation-delay: -1.3s; }
+.gl-wisp.gl-i2::before { animation-delay: -2.1s; width: 38%; }
+.gl-wisp.gl-i3::before { animation-delay: -0.7s; }
+.gl-wisp.gl-i4::before { animation-delay: -3s; width: 52%; }
+
+/* ---- 6. Gelo ----------------------------------------------------------- */
+.gl-frame[data-frame="ice"] { --gl-glow: rgba(130, 220, 255, 0.5); }
+.gl-frame[data-frame="ice"] .gl-glow { animation: gl-breathe 4.4s ease-in-out infinite; }
+.gl-frame[data-frame="ice"] .gl-ring {
+  background: conic-gradient(from 20deg, #e9fbff, #7fd0f2, #ffffff, #4aa9df, #c9f1ff, #8fd9f7, #ffffff, #5bb6e6, #e9fbff);
+  animation: gl-spin 18s linear infinite;
+}
+.gl-frame[data-frame="ice"] .gl-sheen {
+  background: conic-gradient(from 0deg, transparent 0 80%, rgba(255, 255, 255, 0.95) 90%, transparent 98%);
+  animation: gl-spin 3.6s linear infinite;
+}
+.gl-crystal { fill: #e6f8ff; stroke: #79c9ee; stroke-width: 0.6; stroke-linejoin: round; animation: gl-glint 3.2s ease-in-out infinite; }
+.gl-crystal.gl-i1 { animation-delay: -0.6s; }
+.gl-crystal.gl-i2 { animation-delay: -1.3s; }
+.gl-crystal.gl-i3 { animation-delay: -2s; }
+.gl-crystal.gl-i4 { animation-delay: -2.6s; }
+@keyframes gl-glint { 0%, 100% { opacity: 0.75; } 45% { opacity: 1; fill: #ffffff; } }
+.gl-crystals { filter: drop-shadow(0 0 1.5px rgba(120, 210, 255, 0.9)); }
+
+/* ---- 7. Energia vermelha ----------------------------------------------- */
+.gl-frame[data-frame="red"] { --gl-glow: rgba(229, 56, 59, 0.6); }
+.gl-frame[data-frame="red"] .gl-glow { animation: gl-breathe 1.8s ease-in-out infinite; }
+.gl-frame[data-frame="red"] .gl-ring {
+  background: conic-gradient(from 0deg, #ff2b2b, #6e0008, #ff6a4a, #a30010, #ff3b30, #4d0006, #ff2b2b);
+  animation: gl-spin 4.8s linear infinite;
+}
+.gl-frame[data-frame="red"] .gl-ring2 {
+  -webkit-mask: radial-gradient(closest-side, transparent 87%, #000 88%, #000 90.5%, transparent 91.5%);
+  mask: radial-gradient(closest-side, transparent 87%, #000 88%, #000 90.5%, transparent 91.5%);
+  background: repeating-conic-gradient(from 0deg, #ff4d4d 0 14deg, transparent 14deg 26deg);
+  animation: gl-spin-rev 3.2s linear infinite;
+}
+.gl-pulse {
+  background: radial-gradient(closest-side, transparent 70%, rgba(255, 60, 50, 0.85) 76%, transparent 84%);
+  animation: gl-ripple 1.8s ease-out infinite;
+  opacity: 0;
+}
+.gl-pulse.gl-i1 { animation-delay: -0.9s; }
+@keyframes gl-ripple { 0% { transform: scale(0.92); opacity: 0.85; } 100% { transform: scale(1.22); opacity: 0; } }
+
+/* ---- 8. Partículas luminosas ------------------------------------------- */
+.gl-frame[data-frame="particles"] { --gl-glow: rgba(255, 236, 180, 0.35); }
+.gl-frame[data-frame="particles"] .gl-glow { animation: gl-breathe 4s ease-in-out infinite; }
+.gl-frame[data-frame="particles"] .gl-ring {
+  -webkit-mask: radial-gradient(closest-side, transparent 76%, #000 77%, #000 79%, transparent 80%);
+  mask: radial-gradient(closest-side, transparent 76%, #000 77%, #000 79%, transparent 80%);
+  background: conic-gradient(from 0deg, rgba(255, 230, 160, 0.9), rgba(160, 220, 255, 0.6), rgba(255, 180, 220, 0.8), rgba(255, 230, 160, 0.9));
+}
+.gl-dot {
+  position: absolute;
+  left: 50%;
+  top: 8%;
+  width: 6%;
+  height: 6%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, #ffffff 0 28%, var(--gl-dot, #ffe3a0) 52%, rgba(255, 255, 255, 0) 72%);
+  box-shadow: 0 0 5px 1px var(--gl-dot, #ffe3a0);
+  animation: gl-twinkle 1.6s ease-in-out infinite alternate;
+}
+@keyframes gl-twinkle { from { opacity: 0.45; } to { opacity: 1; } }
+.gl-frame[data-frame="particles"] .gl-orbit.gl-i0 { animation-duration: 4.2s; }
+.gl-frame[data-frame="particles"] .gl-orbit.gl-i1 { animation-duration: 6s; animation-name: gl-spin-rev; animation-delay: -2s; inset: 3%; --gl-dot: #9fdcff; }
+.gl-frame[data-frame="particles"] .gl-orbit.gl-i2 { animation-duration: 7.4s; animation-delay: -5s; inset: -3%; --gl-dot: #ffb3dd; }
+.gl-frame[data-frame="particles"] .gl-orbit.gl-i3 { animation-duration: 5.2s; animation-name: gl-spin-rev; animation-delay: -1s; inset: 1%; }
+.gl-frame[data-frame="particles"] .gl-orbit.gl-i4 { animation-duration: 8.6s; animation-delay: -6s; inset: -1%; --gl-dot: #b9ffde; }
+.gl-frame[data-frame="particles"] .gl-orbit.gl-i5 { animation-duration: 3.6s; animation-delay: -0.4s; inset: 4%; --gl-dot: #9fdcff; }
+.gl-frame[data-frame="particles"] .gl-orbit.gl-i6 { animation-duration: 9.4s; animation-name: gl-spin-rev; animation-delay: -3.3s; inset: -4%; --gl-dot: #ffd27a; }
+.gl-frame[data-frame="particles"] .gl-orbit.gl-i7 { animation-duration: 6.6s; animation-delay: -4.4s; inset: 2%; --gl-dot: #ffb3dd; }
+.gl-frame[data-frame="particles"] .gl-orbit.gl-i1 .gl-dot, .gl-frame[data-frame="particles"] .gl-orbit.gl-i5 .gl-dot { width: 4.4%; height: 4.4%; animation-delay: -0.7s; }
+.gl-frame[data-frame="particles"] .gl-orbit.gl-i3 .gl-dot, .gl-frame[data-frame="particles"] .gl-orbit.gl-i6 .gl-dot { width: 5%; height: 5%; animation-delay: -1.1s; }
+
+/* ---- Tamanho pequeno: anel parado na cor da moldura ---------------------- */
+.gl-frame.is-small { inset: -2px; border-radius: 50%; box-shadow: 0 0 0 2px var(--gl-small, #e3b341); }
+.gl-frame.is-small[data-frame="gold"] { --gl-small: #e7b93c; }
+.gl-frame.is-small[data-frame="fire"] { --gl-small: #ff7a1f; }
+.gl-frame.is-small[data-frame="lightning"] { --gl-small: #6cc4ff; }
+.gl-frame.is-small[data-frame="arcane"] { --gl-small: #b48cff; }
+.gl-frame.is-small[data-frame="shadow"] { --gl-small: #5b3a85; }
+.gl-frame.is-small[data-frame="ice"] { --gl-small: #9fe0fb; }
+.gl-frame.is-small[data-frame="red"] { --gl-small: #e5383b; }
+.gl-frame.is-small[data-frame="particles"] { --gl-small: #ffe3a0; }
+
+/* ---- Banner ------------------------------------------------------------- */
+.gl-banner {
+  position: relative;
+  height: var(--gl-banner-h, 100px);
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--av-0, #1d4740), color-mix(in srgb, var(--av-0, #1d4740) 55%, #000));
+}
+.gl-banner[data-c="1"] { background: linear-gradient(135deg, var(--av-1, #322c61), color-mix(in srgb, var(--av-1, #322c61) 55%, #000)); }
+.gl-banner[data-c="2"] { background: linear-gradient(135deg, var(--av-2, #24335c), color-mix(in srgb, var(--av-2, #24335c) 55%, #000)); }
+.gl-banner[data-c="3"] { background: linear-gradient(135deg, var(--av-3, #4a3b1e), color-mix(in srgb, var(--av-3, #4a3b1e) 55%, #000)); }
+.gl-banner[data-c="4"] { background: linear-gradient(135deg, var(--av-4, #1e4632), color-mix(in srgb, var(--av-4, #1e4632) 55%, #000)); }
+.gl-banner[data-c="5"] { background: linear-gradient(135deg, var(--av-5, #4c2430), color-mix(in srgb, var(--av-5, #4c2430) 55%, #000)); }
+.gl-banner[data-c="6"] { background: linear-gradient(135deg, var(--av-6, #164552), color-mix(in srgb, var(--av-6, #164552) 55%, #000)); }
+.gl-banner[data-c="7"] { background: linear-gradient(135deg, var(--av-7, #4d3018), color-mix(in srgb, var(--av-7, #4d3018) 55%, #000)); }
+.gl-banner-img { display: block; width: 100%; height: 100%; object-fit: cover; user-select: none; -webkit-user-drag: none; }
+
+/* ---- Cartão de referência ---------------------------------------------- */
+.gl-card {
+  --gl-ring-bg: var(--rail-bg, #07090f);
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border, #2b3252);
+  border-radius: var(--radius, 14px);
+  background: var(--rail-bg, #07090f);
+  color: var(--text, #eceefa);
+}
+.gl-card .gl-banner { --gl-banner-h: 104px; }
+.gl-card.is-compact .gl-banner { --gl-banner-h: 92px; }
+.gl-card-head { position: relative; z-index: 1; padding: 0 var(--space-4, 1rem); margin-top: -46px; }
+.gl-card-av { display: inline-block; padding: 5px; border-radius: 50%; background: var(--rail-bg, #07090f); }
+.gl-card-body { position: relative; z-index: 1; padding: var(--space-2, 0.5rem) var(--space-4, 1rem) var(--space-4, 1rem); }
+.gl-card-name { font-size: var(--fs-lg, 1.25rem); font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.gl-card-user { color: var(--text-muted, #a9afca); font-size: var(--fs-sm, 0.875rem); }
+.gl-card-custom { margin-top: var(--space-2, 0.5rem); font-size: var(--fs-sm, 0.875rem); overflow-wrap: anywhere; }
+.gl-card-sep { height: 1px; margin: var(--space-3, 0.75rem) 0; background: var(--border, #2b3252); }
+.gl-card-label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted, #a9afca); }
+.gl-card-about { margin: var(--space-1, 0.25rem) 0 0; font-size: var(--fs-sm, 0.875rem); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ---- Efeitos do cartão ------------------------------------------------- */
+.gl-fx-host.gl-fx-pos { position: relative; }
+.gl-fx, .gl-fx-still {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  /* O efeito vive em volta do avatar e do banner e some antes do texto, para não cobrir informação. */
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 52%, rgba(0, 0, 0, 0.35) 74%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0, #000 52%, rgba(0, 0, 0, 0.35) 74%, transparent 100%);
+}
+.gl-fx-still {
+  --gl-ax: 60px; --gl-ay: 110px; --gl-ar: 40px;
+  --gl-fxc: rgba(255, 200, 90, 0.35);
+  background: radial-gradient(circle at var(--gl-ax) var(--gl-ay), var(--gl-fxc) 0, var(--gl-fxc) calc(var(--gl-ar) * 1.1), transparent calc(var(--gl-ar) * 2.6));
+}
+.gl-fx-still[data-fx="flames"] { --gl-fxc: rgba(255, 110, 30, 0.35); }
+.gl-fx-still[data-fx="sparks"] { --gl-fxc: rgba(90, 170, 255, 0.35); }
+.gl-fx-still[data-fx="magic"] { --gl-fxc: rgba(190, 130, 255, 0.35); }
+.gl-fx-still[data-fx="mist"] { --gl-fxc: rgba(30, 14, 50, 0.55); }
+.gl-fx-still[data-fx="crystal"] { --gl-fxc: rgba(150, 225, 255, 0.35); }
+.gl-fx-still[data-fx="waves"] { --gl-fxc: rgba(255, 180, 70, 0.3); }
+
+/* ---- Editor ------------------------------------------------------------ */
+.gle { position: relative; }
+.gle-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: var(--space-6, 2rem); align-items: start; }
+@media (max-width: 980px) { .gle-grid { grid-template-columns: minmax(0, 1fr); } .gle-preview-col { order: -1; } }
+.gle-form { display: grid; gap: var(--space-5, 1.5rem); min-width: 0; }
+.gle-sec { padding-bottom: var(--space-5, 1.5rem); border-bottom: 1px solid var(--border, #2b3252); }
+.gle-sec:last-child { border-bottom: 0; }
+.gle-h { margin: 0 0 var(--space-1, 0.25rem); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted, #a9afca); }
+.gle-desc { margin: 0 0 var(--space-3, 0.75rem); font-size: var(--fs-sm, 0.875rem); color: var(--text-muted, #a9afca); max-width: 62ch; }
+.gle-label { font-size: var(--fs-sm, 0.875rem); font-weight: 600; color: var(--text, #eceefa); }
+.gle-btns { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2, 0.5rem) var(--space-3, 0.75rem); margin-top: var(--space-3, 0.75rem); }
+.gle-link { background: none; border: 0; padding: 0.35rem 0.25rem; color: var(--text-muted, #a9afca); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; font: inherit; font-size: var(--fs-sm, 0.875rem); }
+.gle-link:hover { color: var(--text, #eceefa); }
+.gle-link.gle-danger { color: var(--danger, #ff8d9c); }
+.gle-link:focus-visible, .gle-tile:focus-visible, .gle-crop:focus-visible, .gle-bn:focus-visible { outline: none; box-shadow: var(--focus, 0 0 0 3px #0a0c14, 0 0 0 5px #8fe9d6); }
+.gle-error { margin: var(--space-2, 0.5rem) 0 0; color: var(--danger, #ff8d9c); font-size: var(--fs-sm, 0.875rem); }
+.gle-file { margin: var(--space-2, 0.5rem) 0 0; color: var(--text-muted, #a9afca); font-size: var(--fs-xs, 0.8125rem); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.gle-file[hidden], .gle-error[hidden] { display: none; }
+
+.gle-media-row { display: flex; flex-wrap: wrap; gap: var(--space-5, 1.5rem); align-items: center; }
+.gle-media-ctrl { flex: 1 1 220px; min-width: 0; }
+.gle-crop {
+  position: relative;
+  flex: none;
+  width: 152px;
+  height: 152px;
+  border-radius: 50%;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  background: var(--surface-2, #1a1f33);
+  box-shadow: 0 0 0 1px var(--border-strong, #3d466e);
+}
+.gle-crop.is-grabbing { cursor: grabbing; }
+.gle-crop.is-empty { cursor: default; }
+.gle-crop-img { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; user-select: none; }
+.gle-crop-initial { display: grid; place-items: center; width: 100%; height: 100%; font-size: 3.4rem; font-weight: 700; background: var(--av-0); color: var(--av-fg-0); }
+.gle-crop-initial[data-c="1"] { background: var(--av-1); color: var(--av-fg-1); }
+.gle-crop-initial[data-c="2"] { background: var(--av-2); color: var(--av-fg-2); }
+.gle-crop-initial[data-c="3"] { background: var(--av-3); color: var(--av-fg-3); }
+.gle-crop-initial[data-c="4"] { background: var(--av-4); color: var(--av-fg-4); }
+.gle-crop-initial[data-c="5"] { background: var(--av-5); color: var(--av-fg-5); }
+.gle-crop-initial[data-c="6"] { background: var(--av-6); color: var(--av-fg-6); }
+.gle-crop-initial[data-c="7"] { background: var(--av-7); color: var(--av-fg-7); }
+.gle-crop-ring { position: absolute; inset: 0; border-radius: 50%; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.14); pointer-events: none; }
+.gle-crop:not(.is-empty):hover .gle-crop-ring { box-shadow: inset 0 0 0 2px var(--accent, var(--ghost, #8fe9d6)); }
+
+.gle-range-row { display: grid; grid-template-columns: auto minmax(0, 1fr) 3.6em; align-items: center; gap: var(--space-3, 0.75rem); margin-top: var(--space-3, 0.75rem); max-width: 420px; }
+.gle-range { width: 100%; accent-color: var(--accent, var(--ghost, #8fe9d6)); }
+.gle-range:disabled { opacity: 0.45; }
+.gle-range-out { font-variant-numeric: tabular-nums; color: var(--text-muted, #a9afca); font-size: var(--fs-sm, 0.875rem); text-align: right; }
+
+.gle-bn {
+  position: relative;
+  max-width: 560px;
+  border-radius: var(--radius-sm, 8px);
+  overflow: hidden;
+  cursor: ns-resize;
+  touch-action: none;
+  box-shadow: 0 0 0 1px var(--border-strong, #3d466e);
+}
+.gle-bn .gl-banner { --gl-banner-h: 132px; }
+.gle-bn.is-empty { cursor: default; }
+.gle-bn.is-grabbing { cursor: grabbing; }
+.gle-bn-empty { position: absolute; inset: auto 0 0 0; padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem); font-size: var(--fs-xs, 0.8125rem); color: rgba(255, 255, 255, 0.86); background: linear-gradient(transparent, rgba(0, 0, 0, 0.5)); }
+
+.gle-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: var(--space-2, 0.5rem); }
+.gle-tile {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: var(--space-2, 0.5rem);
+  min-height: 112px;
+  padding: var(--space-4, 1rem) var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+  border: 1px solid var(--border, #2b3252);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface-2, #1a1f33);
+  color: var(--text, #eceefa);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color var(--dur, 220ms) var(--ease, ease), background-color var(--dur, 220ms) var(--ease, ease), transform 120ms var(--ease, ease);
+}
+.gle-tile:hover { border-color: var(--border-strong, #3d466e); background: var(--surface-3, #222842); }
+.gle-tile:active { transform: scale(0.98); }
+.gle-tile.is-on { border-color: var(--accent, var(--ghost, #8fe9d6)); background: color-mix(in srgb, var(--accent, var(--ghost, #8fe9d6)) 10%, var(--surface-2, #1a1f33)); }
+.gle-tile.is-on::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent, var(--ghost, #8fe9d6)) center / 10px 10px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 5.2 4 7.6 8.6 2.6' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.gle-tile:disabled { cursor: default; opacity: 0.6; }
+.gle-tile-vis { display: grid; place-items: center; width: 72px; height: 72px; }
+.gle-tile-label { font-size: var(--fs-xs, 0.8125rem); line-height: 1.25; text-align: center; color: var(--text-muted, #a9afca); }
+.gle-tile.is-on .gle-tile-label { color: var(--text, #eceefa); font-weight: 600; }
+
+.gle-fx-ico { width: 40px; height: 40px; fill: none; stroke: var(--gle-fx, #e8c45a); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.gle-fx-ico path, .gle-fx-ico circle:not(.o) { fill: color-mix(in srgb, var(--gle-fx, #e8c45a) 22%, transparent); }
+.gle-fx-ico[data-fx="burst"] { --gle-fx: #f1c54e; }
+.gle-fx-ico[data-fx="flames"] { --gle-fx: #ff7a2a; }
+.gle-fx-ico[data-fx="sparks"] { --gle-fx: #6cc4ff; }
+.gle-fx-ico[data-fx="magic"] { --gle-fx: #c08bff; }
+.gle-fx-ico[data-fx="mist"] { --gle-fx: #9b86c4; }
+.gle-fx-ico[data-fx="mist"] path { fill: none; }
+.gle-fx-ico[data-fx="crystal"] { --gle-fx: #9fe0fb; }
+.gle-fx-ico[data-fx="waves"] { --gle-fx: #ffb84a; }
+.gle-fx-ico[data-fx="pulse"] { --gle-fx: #ff6a5a; }
+.gle-fx-ico[data-fx="pulse"] path { fill: none; }
+.gle-fx-ico[data-fx="none"] { --gle-fx: var(--text-faint, #8e95b3); }
+
+.gle-preview-col { min-width: 0; }
+.gle-sticky { position: sticky; top: 0; display: grid; gap: var(--space-2, 0.5rem); }
+.gle-pv-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2, 0.5rem); }
+.gle-pv-note { margin: 0; font-size: var(--fs-xs, 0.8125rem); }
+.gle-replay:disabled { opacity: 0.5; }
+
+.gle-prog { display: grid; gap: 6px; margin-top: var(--space-3, 0.75rem); max-width: 420px; }
+.gle-prog[hidden] { display: none; }
+.gle-prog-label { font-size: var(--fs-sm, 0.875rem); color: var(--text-muted, #a9afca); font-variant-numeric: tabular-nums; }
+.gle-prog-track { position: relative; height: 6px; overflow: hidden; border-radius: 99px; background: var(--surface-3, #222842); }
+.gle-prog-fill { position: absolute; inset: 0; transform-origin: 0 50%; transform: scaleX(0); background: var(--accent, var(--ghost, #8fe9d6)); transition: transform 200ms linear; }
+.gle-prog.is-indeterminate .gle-prog-fill { transform: scaleX(0.35); animation: gle-indet 1.2s ease-in-out infinite; }
+@keyframes gle-indet { 0% { transform: translateX(-40%) scaleX(0.35); } 100% { transform: translateX(110%) scaleX(0.35); } }
+
+.gle-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3, 0.75rem);
+  margin-top: var(--space-5, 1.5rem);
+  padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
+  border: 1px solid var(--border, #2b3252);
+  border-radius: var(--radius-sm, 8px);
+  background: color-mix(in srgb, var(--rail-bg, #07090f) 92%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+.gle-bar.is-dirty { border-color: color-mix(in srgb, var(--accent, var(--ghost, #8fe9d6)) 55%, var(--border, #2b3252)); }
+.gle-bar-msg { display: grid; gap: 2px; min-width: 0; }
+.gle-bar-text { font-size: var(--fs-sm, 0.875rem); font-weight: 600; }
+.gle-bar-err { font-size: var(--fs-sm, 0.875rem); color: var(--danger, #ff8d9c); }
+.gle-bar-err[hidden] { display: none; }
+.gle-bar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2, 0.5rem); }
+.gle-bar-actions [hidden] { display: none; }
+.gle-bar.is-nudge { animation: gle-nudge 420ms var(--ease, ease); }
+@keyframes gle-nudge { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-6px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(3px); } }
+.gle.is-saving .gle-form { opacity: 0.85; }
+
+/* ---- Menos movimento --------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .gl-frame *, .gl-frame *::before, .gl-frame *::after,
+  .gle-tile, .gle-prog-fill, .gle-bar { animation: none !important; transition: none !important; }
+  .gl-frame .gl-sweep, .gl-frame .gl-arc, .gl-frame .gl-sheen, .gl-frame .gl-pulse, .gl-ember, .gl-bolt { display: none; }
+  .gl-frame .gl-orbit.gl-i1, .gl-frame .gl-orbit.gl-i2 { transform: rotate(130deg); }
+  .gl-frame[data-frame="gold"] .gl-orbit.gl-i2 { transform: rotate(250deg); }
+  .gl-frame[data-frame="particles"] .gl-orbit.gl-i3 { transform: rotate(60deg); }
+  .gl-frame[data-frame="particles"] .gl-orbit.gl-i4 { transform: rotate(200deg); }
+  .gl-frame[data-frame="particles"] .gl-orbit.gl-i5 { transform: rotate(290deg); }
+  .gl-frame[data-frame="particles"] .gl-orbit.gl-i6 { transform: rotate(160deg); }
+  .gl-frame[data-frame="particles"] .gl-orbit.gl-i7 { transform: rotate(320deg); }
+  .gle-prog.is-indeterminate .gle-prog-fill { transform: scaleX(0.6); }
+}

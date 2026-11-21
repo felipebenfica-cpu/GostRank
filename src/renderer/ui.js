@@ -1,11 +1,11 @@
-/* Ghost Rank - GhostUI: utilidades de interface compartilhadas (ícones, avatares, menus de contexto,
+/* LUMENEX - GhostUI: utilidades de interface compartilhadas (ícones, avatares, menus de contexto,
    confirmação, aviso rápido). Script clássico, sem innerHTML. Carregado antes de chat.js, settings.js,
    voice.js, shell.js e app.js. O cartão de perfil (openProfile) é registrado pelo shell.js. */
 (function () {
   'use strict';
 
   var SVG_NS = 'http://www.w3.org/2000/svg';
-  var GHOST_PATH = 'M12 2C7.6 2 4 5.5 4 10v11l2.5-2 2.5 2 3-2 3 2 2.5-2 2.5 2V10c0-4.5-3.6-8-8-8z';
+  var GHOST_PATH = 'M6.5 3.5h4.6v12.2h8.2l-2.4 4.8H6.5z'; // ícone 'ghost' = L do LUMENEX
 
   // Cada ícone: lista de [tag, atributos]. Traço herdado de .btn-icon / .channel-icon.
   var ICONS = {
@@ -84,28 +84,28 @@
     return svg;
   }
 
-  function ghostSvg(size, cls) {
+  // Símbolo LUMENEX (provisório: "L" dourado com traço vermelho). O nome ghostSvg fica por compatibilidade.
+  var MARK_L = 'M6.5 3.5h4.6v12.2h8.2l-2.4 4.8H6.5z';
+  var MARK_SPARK = 'M16.4 3.5h2.6l-3.2 6.2h-1.7z';
+  function markSvg(size, cls) {
     var svg = document.createElementNS(SVG_NS, 'svg');
     svg.setAttribute('viewBox', '0 0 24 24');
     svg.setAttribute('width', String(size || 24));
     svg.setAttribute('height', String(size || 24));
     svg.setAttribute('aria-hidden', 'true');
     svg.setAttribute('focusable', 'false');
-    if (cls) svg.setAttribute('class', cls);
+    svg.setAttribute('class', 'lx-mark' + (cls ? ' ' + cls : ''));
     var p = document.createElementNS(SVG_NS, 'path');
-    p.setAttribute('class', 'ghost-body');
-    p.setAttribute('d', GHOST_PATH);
+    p.setAttribute('class', 'ghost-body lx-l');
+    p.setAttribute('d', MARK_L);
     svg.appendChild(p);
-    [9.2, 14.8].forEach(function (cx) {
-      var c = document.createElementNS(SVG_NS, 'circle');
-      c.setAttribute('class', 'ghost-eye');
-      c.setAttribute('cx', String(cx));
-      c.setAttribute('cy', '10.2');
-      c.setAttribute('r', '1.5');
-      svg.appendChild(c);
-    });
+    var q = document.createElementNS(SVG_NS, 'path');
+    q.setAttribute('class', 'lx-spark');
+    q.setAttribute('d', MARK_SPARK);
+    svg.appendChild(q);
     return svg;
   }
+  var ghostSvg = markSvg;
 
   // Iniciais: primeira letra das duas primeiras palavras ("Lua<Cheia>" -> "LC", "Eco" -> "E")
   function initials(name) {
@@ -129,8 +129,8 @@
   }
 
   function nameOf(user, nickname) {
-    if (!user) return 'Fantasma desconhecido';
-    return nickname || user.nickname || user.displayName || user.username || 'Fantasma';
+    if (!user) return 'Pessoa desconhecida';
+    return nickname || user.nickname || user.displayName || user.username || 'Jogador';
   }
 
   function safeImageUrl(url) {
@@ -141,22 +141,49 @@
   }
 
   // Avatar: imagem enviada (data:image ou storage do Supabase) ou iniciais na cor escolhida.
+  var AVATAR_PX = { xs: 24, sm: 32, md: 40, rail: 48, lg: 80 };
+
+  // Foto para listas: miniatura estática (avatarThumbUrl). O original (às vezes animado e pesado)
+  // só entra no tamanho grande (cartão de perfil) ou quando o GhostLook troca no hover.
+  function avatarSrc(user, size) {
+    if (!user) return null;
+    if (size === 'lg') return safeImageUrl(user.avatarUrl) || safeImageUrl(user.avatarThumbUrl);
+    return safeImageUrl(user.avatarThumbUrl) || (user.animatedAvatar ? null : safeImageUrl(user.avatarUrl));
+  }
+
   function avatarEl(user, size, opts) {
     opts = opts || {};
-    var a = el('span', 'avatar avatar-' + (size || 'sm'));
+    size = size || 'sm';
+    var a = el('span', 'avatar avatar-' + size);
     a.dataset.tone = String(toneOf(user));
     a.setAttribute('aria-hidden', 'true');
-    var url = safeImageUrl(user && user.avatarUrl);
-    if (url) {
-      var img = document.createElement('img');
-      img.className = 'avatar-img';
-      img.alt = '';
-      img.decoding = 'async';
-      img.loading = 'lazy';
-      img.src = url;
-      a.appendChild(img);
+    var look = null;
+    if (user && window.GhostLook && typeof window.GhostLook.avatar === 'function') {
+      try {
+        look = window.GhostLook.avatar(user, {
+          size: AVATAR_PX[size] || 32,
+          animate: opts.animate || (size === 'lg' ? 'always' : 'hover'),
+          frame: opts.frame !== undefined ? !!opts.frame : (size === 'sm' || size === 'md' || size === 'lg')
+        });
+      } catch (e) { look = null; }
+    }
+    if (look) {
+      a.classList.add('has-look');
+      look.classList.add('avatar-look');
+      a.appendChild(look);
     } else {
-      a.appendChild(el('span', 'avatar-initials', initials(nameOf(user))));
+      var url = avatarSrc(user, size);
+      if (url) {
+        var img = document.createElement('img');
+        img.className = 'avatar-img';
+        img.alt = '';
+        img.decoding = 'async';
+        img.loading = 'lazy';
+        img.src = url;
+        a.appendChild(img);
+      } else {
+        a.appendChild(el('span', 'avatar-initials', initials(nameOf(user))));
+      }
     }
     if (opts.status) a.appendChild(statusDot(opts.status));
     if (opts.speaking) a.classList.add('is-speaking');
@@ -502,6 +529,8 @@
     el: el,
     icon: icon,
     ghostSvg: ghostSvg,
+    avatarSrc: avatarSrc,
+    markSvg: markSvg,
     initials: initials,
     toneFor: toneFor,
     toneOf: toneOf,

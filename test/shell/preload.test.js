@@ -36,6 +36,7 @@ test('preload expõe exatamente os métodos esperados e nada de ipcRenderer', ()
     'leaveGroup', 'leaveServer', 'linkSteam', 'listBans', 'listInvites', 'listPinned', 'listScreenSources',
     'loadOlder', 'markRead', 'markTargetRead', 'muteTarget', 'onNotificationClick', 'onUpdate', 'openDm',
     'openExternal', 'pickScreenSource', 'pinMessage', 'previewInvite', 'recover', 'refreshGroup', 'removeAvatar',
+    'uploadBanner', 'removeBanner', 'updateProfileLook', 'resetProfileLook', 'reorderChannels', 'moveVoiceMember',
     'removeFriend', 'removeMember', 'reset', 'retryMessage', 'revokeInvite', 'searchMessages', 'searchUsers',
     'select', 'sendFriendRequest', 'sendMessage', 'setCustomStatus', 'setMemberRole', 'setNickname', 'setStatus',
     'setTyping', 'setVoiceState', 'setup', 'signIn', 'signOut', 'signUp', 'sync', 'toggleReaction',

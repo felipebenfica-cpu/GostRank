@@ -50,6 +50,11 @@ contextBridge.exposeInMainWorld('ghostRank', {
   setCustomStatus: (text) => inv('gr:social:customStatus', { text: text === undefined ? null : text }),
   uploadAvatar: (file) => inv('gr:social:avatar', file),
   removeAvatar: () => inv('gr:social:avatarRemove', {}),
+  // Personalização do perfil (LUMENEX)
+  uploadBanner: (file) => inv('gr:look:banner', file),
+  removeBanner: () => inv('gr:look:bannerRemove', {}),
+  updateProfileLook: (patch) => inv('gr:look:update', patch),
+  resetProfileLook: () => inv('gr:look:reset', {}),
   // Servidores
   createServer: (data) => inv('gr:server:create', data),
   previewInvite: (code) => inv('gr:server:preview', { code }),
@@ -74,6 +79,8 @@ contextBridge.exposeInMainWorld('ghostRank', {
   createChannel: (data) => inv('gr:channel:create', data),
   updateChannel: (data) => inv('gr:channel:update', data),
   deleteChannel: (channelId) => inv('gr:channel:delete', { channelId }),
+  reorderChannels: (data) => inv('gr:channel:reorder', data),
+  moveVoiceMember: (data) => inv('gr:voice:move', data),
   // Mensagens
   retryMessage: (id) => inv('gr:msg:retry', { id }),
   editMessage: (data) => inv('gr:msg:edit', data),

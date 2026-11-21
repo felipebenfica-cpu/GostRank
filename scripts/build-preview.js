@@ -20,12 +20,19 @@ function replaceOnce(text, from, to) {
 }
 
 // Scripts e estilos da tela que a prévia carrega direto de src/renderer/
-const RENDERER_CSS = ['styles.css', 'chat.css', 'settings.css', 'voice.css'];
-const RENDERER_JS = ['ui.js', 'emoji-data.js', 'chat.js', 'settings.js', 'voice.js', 'shell.js'];
+const RENDERER_CSS = ['styles.css', 'chat.css', 'settings.css', 'voice.css', 'profile-look.css'];
+const RENDERER_JS = ['ui.js', 'dnd.js', 'profile-look.js', 'emoji-data.js', 'chat.js', 'settings.js', 'voice.js', 'shell.js'];
+// Arquivos da tela que não são scripts do app (carregados no <head>) e a pasta da marca
+const RENDERER_HEAD_JS = ['theme-boot.js'];
+const RENDERER_ASSETS = ['brand/favicon.svg', 'brand/lumenex-mark.svg', 'brand/icon-192.png', 'brand/icon-512.png', 'manifest.webmanifest'];
 
 function build() {
   let html = fs.readFileSync(src, 'utf8');
-  html = replaceOnce(html, '  <title>Ghost Rank</title>\n', `  <meta http-equiv="Content-Security-Policy" content="${CSP}">\n  <title>Ghost Rank (prévia)</title>\n`);
+  html = replaceOnce(html, '  <title>LUMENEX</title>\n', `  <meta http-equiv="Content-Security-Policy" content="${CSP}">\n  <title>LUMENEX (prévia)</title>\n`);
+  html = replaceOnce(html, 'href="brand/favicon.svg"', 'href="../src/renderer/brand/favicon.svg"');
+  for (const name of RENDERER_HEAD_JS) {
+    html = replaceOnce(html, `  <script src="${name}"></script>`, `  <script src="../src/renderer/${name}"></script>`);
+  }
   for (const name of RENDERER_CSS) {
     html = replaceOnce(html, `href="${name}"`, `href="../src/renderer/${name}"`);
   }
@@ -54,4 +61,4 @@ if (process.argv.includes('--check')) {
 
 if (require.main === module) main();
 
-module.exports = { build, RENDERER_CSS, RENDERER_JS };
+module.exports = { build, RENDERER_CSS, RENDERER_JS, RENDERER_HEAD_JS, RENDERER_ASSETS };

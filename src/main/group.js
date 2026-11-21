@@ -114,7 +114,7 @@ function createSupabaseRest({ fetchImpl, supabaseUrl, anonKey, getAccessToken, t
   async function rpc(name, args, token) {
     const { status, data } = await call(`/rest/v1/rpc/${name}`, { method: 'POST', token, body: args || {} });
     if (data?.code === 'PGRST202' && name.startsWith('social_')) {
-      throw new UserInputError('Os recursos sociais aguardam a atualização do banco do GostRank.');
+      throw new UserInputError('Os recursos sociais aguardam a atualização do banco do LUMENEX.');
     }
     if (!ok(status)) throw fail(status, data);
     return data;

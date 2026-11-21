@@ -1,7 +1,7 @@
 {
   "name": "ghost-rank",
   "version": "0.1.0",
-  "description": "Ghost Rank: MMR de Dota 2, grupo, chat e voz",
+  "description": "LUMENEX: MMR de Dota 2, servidores, chat e voz",
   "private": true,
   "main": "src/main/main.js",
   "scripts": {
@@ -23,7 +23,7 @@
   },
   "build": {
     "appId": "com.ghostrank.app",
-    "productName": "Ghost Rank",
+    "productName": "LUMENEX",
     "files": [
       "src/**/*",
       "config.public.json",
@@ -34,10 +34,12 @@
       "target": [
         "portable"
       ],
-      "artifactName": "GhostRank-${version}.exe"
+      "artifactName": "GhostRank-${version}.exe",
+      "icon": "build/icon.png"
     },
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "build"
     }
   }
 }

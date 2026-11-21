@@ -1,6 +1,6 @@
 'use strict';
 
-// Versão web do Ghost Rank (Netlify): monta no navegador a MESMA fiação do app Electron
+// Versão web do LUMENEX (Netlify): monta no navegador a MESMA fiação do app Electron
 // (services.js + controller + handlers validados do ipc.js) e expõe window.ghostRank com o MESMO
 // preload.js — o esbuild troca 'electron' por ./electron-shim.js. Assim a tela não sabe se está no
 // Electron ou no navegador, e a lista de métodos nunca diverge.
@@ -78,7 +78,7 @@ function askNotificationPermissionOnce() {
 function notify({ title, body, target, silent }) {
   try {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
-    const n = new Notification(String(title).slice(0, 120), { body: String(body).slice(0, 200), silent: Boolean(silent), tag: 'ghostrank' });
+    const n = new Notification(String(title).slice(0, 120), { body: String(body).slice(0, 200), silent: Boolean(silent), tag: 'lumenex' });
     n.onclick = () => {
       try { window.focus(); } catch { /* ignora */ }
       n.close();
@@ -90,7 +90,7 @@ function notify({ title, body, target, silent }) {
 }
 
 // ---------------- Contador de não lidas (título da aba + badge do PWA) ----------------
-const BASE_TITLE = document.title || 'Ghost Rank';
+const BASE_TITLE = document.title || 'LUMENEX';
 let lastBadge = -1;
 function updateBadge() {
   if (!services) return;

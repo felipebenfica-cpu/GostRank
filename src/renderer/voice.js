@@ -1,4 +1,4 @@
-/* Ghost Rank - voz (LiveKit), no modelo de uso do Discord: vários canais de voz, chamada em DM,
+/* LUMENEX - voz (LiveKit), no modelo de uso do Discord: vários canais de voz, chamada em DM,
    câmera, transmissão de tela, apertar-para-falar, sensibilidade, dispositivos e sons.
    Script clássico em um único IIFE. Carregado depois de vendor/livekit-client.umd.js
    (que define window.LivekitClient, se instalado) e antes de app.js.
@@ -138,10 +138,23 @@
   }
 
   function avatar(name, id, small) {
+    var u = userInfo(id);
+    // LUMENEX: avatar com recorte, moldura e animação ao passar o mouse (GhostLook), quando carregado.
+    if (u && window.GhostLook && typeof window.GhostLook.avatar === 'function') {
+      try {
+        var look = window.GhostLook.avatar(u, { size: small ? 24 : 88, animate: 'hover', frame: !small });
+        if (look && look.nodeType === 1) {
+          var w = el('span', 'vc-avatar vc-avatar-look' + (small ? ' vc-avatar-sm' : ''));
+          w.setAttribute('aria-hidden', 'true');
+          w.appendChild(look);
+          return w;
+        }
+      } catch (e) { /* cai no avatar simples */ }
+    }
     var a = el('span', 'vc-avatar vc-hue-' + hueFor(id) + (small ? ' vc-avatar-sm' : ''));
     a.setAttribute('aria-hidden', 'true');
-    var u = userInfo(id);
-    var url = u ? safeImageUrl(u.avatarUrl) : '';
+    // listas e chamada usam a miniatura estática; o original animado fica para o cartão de perfil
+    var url = u ? (safeImageUrl(u.avatarThumbUrl) || (u.animatedAvatar ? '' : safeImageUrl(u.avatarUrl))) : '';
     if (url) {
       var img = document.createElement('img');
       img.className = 'vc-avatar-img';
@@ -161,9 +174,9 @@
 
   var WHAT = {
     mic: { busy: 'o microfone', missing: 'Nenhum microfone foi encontrado neste computador.', fail: 'Não deu para ligar o microfone. Tente de novo.',
-      denied: 'O Ghost Rank não recebeu permissão para usar o microfone. Libere o microfone nas configurações de privacidade do sistema.' },
+      denied: 'O LUMENEX não recebeu permissão para usar o microfone. Libere o microfone nas configurações de privacidade do sistema.' },
     camera: { busy: 'a câmera', missing: 'Nenhuma câmera foi encontrada neste computador.', fail: 'Não deu para ligar a câmera. Tente de novo.',
-      denied: 'O Ghost Rank não recebeu permissão para usar a câmera. Libere a câmera nas configurações de privacidade do sistema.' },
+      denied: 'O LUMENEX não recebeu permissão para usar a câmera. Libere a câmera nas configurações de privacidade do sistema.' },
     screen: { busy: 'o compartilhamento de tela', missing: 'Não encontramos essa tela ou janela. Escolha de novo.', fail: 'Não deu para compartilhar a tela. Tente de novo.',
       denied: 'O compartilhamento de tela foi cancelado ou bloqueado.' }
   };
@@ -349,12 +362,12 @@
     for (var i = 0; i < members.length; i++) {
       if (members[i] && members[i].userId === id && members[i].displayName) return String(members[i].displayName);
     }
-    return fallback || 'Fantasma';
+    return fallback || 'Participante';
   }
 
   function nameFor(participant) {
-    if (!participant) return 'Fantasma';
-    var fb = (typeof participant.name === 'string' && participant.name) ? participant.name : 'Fantasma';
+    if (!participant) return 'Participante';
+    var fb = (typeof participant.name === 'string' && participant.name) ? participant.name : 'Participante';
     return displayNameOf(participant.identity, fb);
   }
 
@@ -942,7 +955,7 @@
         status = 'off';
         target = null;
         targetInfo = null;
-        setError('A biblioteca de voz não abriu. Rode npm install e abra o Ghost Rank de novo.');
+        setError('A biblioteca de voz não abriu. Rode npm install e abra o LUMENEX de novo.');
         return null;
       }
       room = r;
@@ -1251,7 +1264,7 @@
     if (open !== gateOpen) { gateOpen = open; scheduleRender(); }
   }
 
-  // Apertar-para-falar: só com o Ghost Rank em foco (o navegador não vê teclas de fora da janela).
+  // Apertar-para-falar: só com o LUMENEX em foco (o navegador não vê teclas de fora da janela).
   var capturingKey = false;
   function isTextField(t) {
     if (!t || !t.tagName) return false;
@@ -2685,12 +2698,12 @@
     pttRow.appendChild(keyCap);
     pttRow.appendChild(keyBtn);
     pttBox.appendChild(pttRow);
-    pttBox.appendChild(el('p', 'vs-desc vs-warn', 'O apertar-para-falar funciona enquanto a janela do Ghost Rank está em foco. Se você estiver em outro programa (como o jogo em tela cheia), a tecla não é vista.'));
+    pttBox.appendChild(el('p', 'vs-desc vs-warn', 'O apertar-para-falar funciona enquanto a janela do LUMENEX está em foco. Se você estiver em outro programa (como o jogo em tela cheia), a tecla não é vista.'));
     secMode.appendChild(pttBox);
 
     // --- Sensibilidade
     var secSens = vsSection(root, 'Sensibilidade de entrada');
-    var autoSw = vsSwitch('Determinar automaticamente a sensibilidade de entrada', 'O Ghost Rank ajusta o limite conforme o ruído do seu ambiente.', 'auto');
+    var autoSw = vsSwitch('Determinar automaticamente a sensibilidade de entrada', 'O LUMENEX ajusta o limite conforme o ruído do seu ambiente.', 'auto');
     secSens.appendChild(autoSw.row);
     var sensWrap = el('div', 'vs-sens');
     var sensMeter = vsMeter(true);
@@ -3093,6 +3106,49 @@
     return false;
   }
 
+  /* ---------- mudança de sala feita por um ADM (view.voiceMove) ---------- */
+  var lastMoveNonce = null;
+  var moveSeq = 0;
+
+  function noticeMove(text) {
+    announce(text);
+    if (window.GhostUI && typeof window.GhostUI.toast === 'function') {
+      try { window.GhostUI.toast(text); } catch (e) { /* ignora */ }
+    }
+  }
+
+  // Um ADM arrastou você para outro canal de voz do mesmo servidor: troca de sala tentando manter
+  // microfone, ensurdecer e câmera como estavam. A transmissão de tela precisa ser escolhida de novo
+  // (o sistema pede a tela/janela outra vez), então ela é encerrada com aviso.
+  function handleVoiceMove(view) {
+    var vm = view && view.voiceMove;
+    if (!vm || typeof vm !== 'object') return;
+    var nonce = vm.nonce;
+    if ((typeof nonce !== 'string' && typeof nonce !== 'number') || String(nonce) === lastMoveNonce) return;
+    lastMoveNonce = String(nonce);
+    var channelId = typeof vm.channelId === 'string' && vm.channelId.length <= 64 ? vm.channelId : '';
+    var serverId = typeof vm.serverId === 'string' ? vm.serverId : '';
+    if (!channelId || !serverId) return;
+    // só vale para quem já está (ou está entrando) numa sala de voz desse servidor
+    if (!(room || status === 'connecting') || !target || !target.channelId) return;
+    if (!targetInfo || targetInfo.serverId !== serverId) return;
+    if (target.channelId === channelId) return;
+    var ch = findChannel(view, channelId);
+    var chName = ch && ch.name ? String(ch.name) : 'outro canal';
+    var lp = room && room.localParticipant;
+    var hadVideo = videoOn();
+    var hadStream = !!(inRoom() && lp && lp.isScreenShareEnabled);
+    var seq = ++moveSeq;
+    errorText = '';
+    return join({ channelId: channelId }).then(function () {
+      if (seq !== moveSeq) return null;
+      if (!inRoom() || !target || target.channelId !== channelId) return null; // join já mostrou o erro
+      noticeMove('Um administrador moveu você para ' + chName + '.' + (hadStream ? ' Sua transmissão foi encerrada; compartilhe de novo se quiser.' : ''));
+      if (hadVideo && !videoOn()) return toggleVideo();
+      return null;
+    });
+  }
+
   function update(view) {
     lastView = view || null;
     var reason = unavailableReason(view);
@@ -3108,6 +3164,7 @@
     applyVoicePrefs();
     if (settingsUi) settingsUi.sync();
     scheduleRender();
+    handleVoiceMove(view);
   }
 
   window.GhostVoice = {

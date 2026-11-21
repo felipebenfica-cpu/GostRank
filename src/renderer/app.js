@@ -1,4 +1,4 @@
-/* Ghost Rank - tela. Script clássico em um único IIFE (funciona em app:// e file://).
+/* LUMENEX - tela. Script clássico em um único IIFE (funciona em app:// e file://).
    Conversa somente com window.ghostRank. Nunca usa innerHTML com dados externos. */
 (function () {
   'use strict';
@@ -856,7 +856,7 @@
     call(function () { return bridge.linkSteam(); }).then(function (res) {
       btn.disabled = false;
       if (res && res.ok) {
-        setMessage(note, 'Abrimos o Steam no seu navegador. Entre por lá e depois volte para o Ghost Rank.');
+        setMessage(note, 'Abrimos o Steam no seu navegador. Entre por lá e depois volte para o LUMENEX.');
       } else {
         setMessage(ac.account.error, (res && res.error) || 'Não deu para abrir o Steam. Tente de novo.');
       }
@@ -883,7 +883,7 @@
 
   function start() {
     if (!bridge) {
-      els.boot.textContent = 'Não foi possível conectar ao aplicativo. Feche e abra o Ghost Rank de novo.';
+      els.boot.textContent = 'Não foi possível conectar ao aplicativo. Feche e abra o LUMENEX de novo.';
       return;
     }
 

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="LUMENEX (símbolo provisório)">
+  <defs>
+    <linearGradient id="lx-gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F3D27A"/>
+      <stop offset="0.55" stop-color="#D4A72C"/>
+      <stop offset="1" stop-color="#9C7414"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#0B0B0D"/>
+  <rect x="2" y="2" width="60" height="60" rx="12" fill="none" stroke="#2A2418" stroke-width="2"/>
+  <path fill="url(#lx-gold)" d="M18 10h12v32h22l-6 12H18z"/>
+  <path fill="#0B0B0D" d="M30 14l-4 4v22h4z"/>
+  <path fill="#E5383B" d="M44 10l6 0-8 16-4 0z"/>
+</svg>

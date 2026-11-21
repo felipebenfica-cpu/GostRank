@@ -1,9 +1,16 @@
 /* Banco de testes da voz: ponte e view mínimas no formato da Etapa 6.
    ?join=1 entra no canal Geral · ?cam=1 liga a câmera · ?ptt=1 modo apertar-para-falar
-   ?dm=1 chamada com Lua · ?settings=1 abre a aba Voz e vídeo · ?full=1 (com settings) prefs extras */
+   ?dm=1 chamada com Lua · ?settings=1 abre a aba Voz e vídeo · ?full=1 (com settings) prefs extras
+   ?move=1 (com join) um ADM move você para Ranqueada · ?look=1 usa um GhostLook falso (moldura) */
 (function () {
   'use strict';
   var q = new URLSearchParams(location.search);
+  if (q.get('look') && !window.GhostLook) {
+    // GhostLook falso só para conferir o encaixe (o real é src/renderer/profile-look.js)
+    window.GhostLook = { avatar: function (user, o) {
+      var w = document.createElement('span'); w.className = 'hv-look' + (o && o.frame ? ' hv-look-frame' : '');
+      w.textContent = (user.displayName || '?').charAt(0).toUpperCase(); return w; } };
+  }
   var ME = '11111111-1111-4111-8111-111111111111';
   var LUA = '22222222-2222-4222-8222-222222222222';
   var SOMBRA = '33333333-3333-4333-8333-333333333333';
@@ -98,6 +105,11 @@
     setTimeout(function () {
       window.GhostVoice.join(q.get('dm') ? { dmId: DM_LUA } : { channelId: CH_GERAL }).then(function () {
         if (q.get('cam')) setTimeout(function () { window.GhostVoice.toggleVideo(); }, 400);
+        if (q.get('move')) setTimeout(function () {
+          view.voiceMove = { nonce: 'm1', serverId: SERVER, channelId: CH_RANKED, by: LUA };
+          push();
+          setTimeout(push, 300); // o mesmo nonce de novo não move outra vez
+        }, 1200);
       });
     }, 100);
   }

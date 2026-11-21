@@ -101,6 +101,8 @@ function createAppServices({
   let lastTypingTarget = null;
   let startGen = 0;
   const debounced = new Map();
+  let voiceMove = null; // Etapa 7: { nonce, serverId, channelId, by }
+  let voiceMoveNonce = 0;
 
   function debounce(key, fn) {
     if (debounced.has(key)) return;
@@ -215,6 +217,10 @@ function createAppServices({
     if (gen !== startGen) return;
     const me = social.getMe();
     if (me) presence.setPreferred(me.status);
+    // Etapa 7: tema salvo na conta vale quando este aparelho nunca escolheu um.
+    if (me && me.appearanceTheme && !prefs.themeChosenHere() && prefs.get().appearance.theme !== me.appearanceTheme) {
+      try { prefs.update({ appearance: { theme: me.appearanceTheme } }, { fromAccount: true }); } catch { /* ignora */ }
+    }
     syncPresence();
     const nav = prefs.getNav();
     try {
@@ -231,6 +237,7 @@ function createAppServices({
     selection = { mode: 'home', tab: 'friends' };
     lastChannelOf.clear();
     channelIndex = new Map();
+    voiceMove = null;
     if (detectTimer) { timers.clearTimeout(detectTimer); detectTimer = null; }
     if (tokenTimer) { timers.clearInterval(tokenTimer); tokenTimer = null; }
     for (const t of debounced.values()) timers.clearTimeout(t);
@@ -316,6 +323,14 @@ function createAppServices({
       if (ev.serverId && ev.serverId === servers.getSelectedId()) debounce('selected', () => servers.reloadSelected());
     } else if (ev.kind === 'members') {
       if (ev.serverId && ev.serverId === servers.getSelectedId()) debounce('selected', () => servers.reloadSelected());
+    } else if (ev.kind === 'voice_move') {
+      const ch = channelIndex.get(ev.channelId);
+      const ok = servers.has(ev.serverId) && (!ch || (ch.groupId === ev.serverId && ch.kind === 'voice'));
+      if (ok) {
+        voiceMoveNonce += 1;
+        voiceMove = { nonce: voiceMoveNonce, serverId: ev.serverId, channelId: ev.channelId, by: ev.by || null };
+        emit();
+      }
     }
   }
 
@@ -677,6 +692,11 @@ function createAppServices({
     }),
     uploadAvatar: (f) => after(() => social.uploadAvatar(f)),
     removeAvatar: () => after(() => social.removeAvatar()),
+    // Etapa 7: personalização do perfil
+    uploadBanner: (f) => after(() => social.uploadBanner(f)),
+    removeBanner: () => after(() => social.removeBanner()),
+    updateProfileLook: (patch) => after(() => social.updateLook(patch)),
+    resetProfileLook: () => after(() => social.resetLook()),
     // Servidores
     createServer: (d) => after(async () => {
       const id = await servers.create(d);
@@ -726,6 +746,8 @@ function createAppServices({
       return id;
     }),
     updateChannel: (d) => after(() => servers.updateChannel(d)),
+    reorderChannels: (d) => after(() => servers.reorderChannels(d)),
+    moveVoiceMember: (d) => after(() => servers.moveVoiceMember(d)),
     deleteChannel: (id) => after(async () => {
       await servers.deleteChannel(id);
       await refreshChannelIndex().catch(() => {});
@@ -772,7 +794,15 @@ function createAppServices({
       await openExternal(url);
     },
     // Preferências (funcionam sem conta)
-    updatePrefs: async (patch) => { prefs.update(patch); emit(); },
+    updatePrefs: async (patch) => {
+      const before = prefs.get().appearance.theme;
+      const next = prefs.update(patch);
+      // Etapa 7: tema também na conta (sem bloquear a tela; falha calada).
+      if (next.appearance.theme !== before && mode === 'v3' && signedIn() && social) {
+        social.saveTheme(next.appearance.theme).catch(() => {});
+      }
+      emit();
+    },
     muteTarget: async ({ target, muted }) => { prefs.setMuted(target, muted); emit(); },
     // Voz
     voiceToken: async (target) => {
@@ -808,6 +838,8 @@ function createAppServices({
       voiceStates: {},
       messages: null,
       users: {},
+      uploads: { avatar: null, banner: null },
+      voiceMove: null,
     };
   }
 
@@ -886,6 +918,8 @@ function createAppServices({
       voiceStates,
       messages: msgView,
       users: users.viewMap([...ids]),
+      uploads: social.getUploads(),
+      voiceMove: voiceMove ? { ...voiceMove } : null,
     };
   }
 

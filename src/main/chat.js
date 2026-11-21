@@ -143,7 +143,7 @@ function createChatClient({ fetchImpl, supabaseUrl, anonKey, getAccessToken, tim
     const { status, data } = await call(`/rest/v1/messages?select=${method === 'DELETE' ? baseColumns : COLS}&${filters}`, {
       method, token, body, headers: { Prefer: 'return=representation' },
     });
-    if (method === 'PATCH' && lacksRevision({ status, data })) throw new UserInputError('A edição aguarda a atualização do banco do GostRank.');
+    if (method === 'PATCH' && lacksRevision({ status, data })) throw new UserInputError('A edição aguarda a atualização do banco do LUMENEX.');
     if (!ok(status)) throw fail(status, data);
     if (Array.isArray(data) && data.length === 0) throw chatError('unavailable_message');
     const message = Array.isArray(data) && data.length === 1 ? toMessage(data[0]) : null;

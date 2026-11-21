@@ -13,7 +13,10 @@ const FILE_MIMES = Object.freeze([
 ]);
 const EXT = Object.freeze({ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' });
 const ATTACHMENT_MAX = 8 * 1024 * 1024;
-const AVATAR_MAX = 2 * 1024 * 1024;
+const AVATAR_MAX = 2 * 1024 * 1024; // ícone de servidor (Etapa 6)
+// Etapa 7 (LUMENEX): avatar e banner do perfil até 40 MB exatos (41943040 bytes aceitos; um a mais, não).
+const PROFILE_MEDIA_MAX = 40 * 1024 * 1024;
+const THUMB_MAX = 512 * 1024;
 
 function isArrayBuffer(v) {
   return Object.prototype.toString.call(v) === '[object ArrayBuffer]';
@@ -34,6 +37,64 @@ function sniffImage(b) {
   if (b.length >= 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46
     && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'image/webp';
   return null;
+}
+
+/** GIF: conta os quadros percorrendo os blocos (para no 2º). */
+function gifFrameCount(b) {
+  try {
+    if (b.length < 13) return 0;
+    let i = 13;
+    const flags = b[10];
+    if (flags & 0x80) i += 3 * (1 << ((flags & 0x07) + 1)); // tabela de cores global
+    let frames = 0;
+    while (i < b.length) {
+      const block = b[i];
+      if (block === 0x3b) break; // fim
+      if (block === 0x21) { // extensão: rótulo + sub-blocos
+        i += 2;
+        while (i < b.length && b[i] !== 0) i += b[i] + 1;
+        i += 1;
+      } else if (block === 0x2c) { // imagem
+        frames += 1;
+        if (frames > 1) return frames;
+        if (i + 10 > b.length) break;
+        const lf = b[i + 9];
+        i += 10;
+        if (lf & 0x80) i += 3 * (1 << ((lf & 0x07) + 1));
+        i += 1; // tamanho mínimo do LZW
+        while (i < b.length && b[i] !== 0) i += b[i] + 1;
+        i += 1;
+      } else {
+        break;
+      }
+    }
+    return frames;
+  } catch { return 0; }
+}
+
+/** Imagem animada pelos bytes: GIF com 2+ quadros, WebP com ANIM/bandeira de animação, PNG com acTL (APNG). */
+function isAnimatedImage(b, mime) {
+  if (mime === 'image/gif') return gifFrameCount(b) > 1;
+  if (mime === 'image/webp') {
+    if (b.length >= 21 && String.fromCharCode(b[12], b[13], b[14], b[15]) === 'VP8X' && (b[20] & 0x02)) return true;
+    for (let i = 12; i + 8 <= b.length && i < 1 << 20;) { // percorre os chunks RIFF
+      const tag = String.fromCharCode(b[i], b[i + 1], b[i + 2], b[i + 3]);
+      if (tag === 'ANIM' || tag === 'ANMF') return true;
+      const len = (b[i + 4] | b[i + 5] << 8 | b[i + 6] << 16 | b[i + 7] << 24) >>> 0;
+      i += 8 + len + (len & 1);
+    }
+    return false;
+  }
+  if (mime === 'image/png') {
+    for (let i = 8; i + 8 <= b.length && i < 1 << 22;) {
+      const len = (b[i] << 24 | b[i + 1] << 16 | b[i + 2] << 8 | b[i + 3]) >>> 0;
+      const tag = String.fromCharCode(b[i + 4], b[i + 5], b[i + 6], b[i + 7]);
+      if (tag === 'acTL') return true;
+      if (tag === 'IDAT' || tag === 'IEND') return false;
+      i += 12 + len;
+    }
+  }
+  return false;
 }
 
 /** Largura/altura de PNG, GIF, JPEG e WebP (VP8/VP8L/VP8X); null se não der para ler. */
@@ -85,20 +146,26 @@ function safeFileName(name, fallback = 'arquivo') {
 }
 
 /**
- * Valida um upload. `kind`: 'attachment' (8 MB, vários tipos) ou 'image' (2 MB, só imagem).
+ * Valida um upload. `kind`: 'attachment' (8 MB, vários tipos), 'image' (2 MB, só imagem — ícone de servidor),
+ * 'profile' (40 MB, só imagem — avatar/banner, com `animated` pelos bytes) ou 'thumb' (512 KB, só WebP).
  * Devolve { bytes, mime, name, size, isImage, width?, height?, ext }.
  */
 function validateUpload(input, kind = 'attachment') {
   if (!input || typeof input !== 'object') throw appError('invalid_file');
   const bytes = toBytes(input.data);
   if (!bytes || bytes.length === 0) throw appError('invalid_file');
-  const max = kind === 'image' ? AVATAR_MAX : ATTACHMENT_MAX;
-  if (bytes.length > max) throw appError(kind === 'image' ? 'avatar_too_big' : 'attachment_too_big');
+  const max = { image: AVATAR_MAX, profile: PROFILE_MEDIA_MAX, thumb: THUMB_MAX }[kind] || ATTACHMENT_MAX;
+  if (bytes.length > max) {
+    throw appError({ image: 'avatar_too_big', profile: 'profile_too_big', thumb: 'invalid_thumb' }[kind] || 'attachment_too_big');
+  }
   const declared = typeof input.mime === 'string' ? input.mime.toLowerCase().split(';')[0].trim() : '';
   const real = sniffImage(bytes);
   let mime;
-  if (kind === 'image') {
-    if (!real || !IMAGE_MIMES.includes(real)) throw appError('invalid_file');
+  if (kind === 'thumb') {
+    if (real !== 'image/webp') throw appError('invalid_thumb');
+    mime = real;
+  } else if (kind === 'image' || kind === 'profile') {
+    if (!real || !IMAGE_MIMES.includes(real)) throw appError(kind === 'profile' ? 'invalid_profile_image' : 'invalid_file');
     mime = real;
   } else if (real) {
     mime = real; // imagem: vale a assinatura, não o que foi declarado
@@ -109,6 +176,7 @@ function validateUpload(input, kind = 'attachment') {
   const isImage = IMAGE_MIMES.includes(mime);
   const name = safeFileName(input.name, isImage ? `imagem.${EXT[mime]}` : 'arquivo');
   const out = { bytes, mime, name, size: bytes.length, isImage, ext: EXT[mime] || null };
+  if (kind === 'profile') out.animated = isAnimatedImage(bytes, mime);
   if (isImage) {
     const dim = imageSize(bytes, mime);
     if (dim && dim.width > 0 && dim.height > 0 && dim.width <= 20000 && dim.height <= 20000) {
@@ -120,6 +188,6 @@ function validateUpload(input, kind = 'attachment') {
 }
 
 module.exports = {
-  validateUpload, sniffImage, imageSize, safeFileName, toBytes, isArrayBuffer,
-  IMAGE_MIMES, FILE_MIMES, ATTACHMENT_MAX, AVATAR_MAX,
+  validateUpload, sniffImage, imageSize, safeFileName, toBytes, isArrayBuffer, isAnimatedImage, gifFrameCount,
+  IMAGE_MIMES, FILE_MIMES, ATTACHMENT_MAX, AVATAR_MAX, PROFILE_MEDIA_MAX, THUMB_MAX,
 };

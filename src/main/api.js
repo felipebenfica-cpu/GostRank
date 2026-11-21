@@ -16,6 +16,12 @@ const INVALID_ERROR = 'Dados inválidos.';
 const ATTACHMENT_MAX = 8 * 1024 * 1024;
 const IMAGE_MAX = 2 * 1024 * 1024;
 const MAX_ATTACHMENTS = 4;
+// Etapa 7 (LUMENEX)
+const PROFILE_MEDIA_MAX = 40 * 1024 * 1024; // 41943040 bytes: aceito; um a mais, não
+const THUMB_MAX = 512 * 1024;
+const FRAME_IDS = Object.freeze(['gold', 'fire', 'lightning', 'arcane', 'shadow', 'ice', 'red', 'particles']);
+const EFFECT_IDS = Object.freeze(['burst', 'flames', 'sparks', 'magic', 'mist', 'crystal', 'waves', 'pulse']);
+const MAX_LAYOUT = 500;
 
 // ---------------- Ajudantes de validação ----------------
 function isPlainObject(v) {
@@ -95,6 +101,74 @@ const V = {
     return { text: p.text };
   },
   image(p) { return uploadOk(p, IMAGE_MAX); },
+  /** Avatar/banner: original até 40 MB + miniatura WebP até 512 KB + `animated` (o main confere pelos bytes). */
+  profileMedia(p) {
+    if (!shape(p, ['name', 'mime', 'data', 'thumb'], ['animated'])) return null;
+    const f = uploadOk({ name: p.name, mime: p.mime, data: p.data }, PROFILE_MEDIA_MAX);
+    if (!f) return null;
+    if (!shape(p.thumb, ['mime', 'data']) || p.thumb.mime !== 'image/webp') return null;
+    const tn = byteLength(p.thumb.data);
+    if (tn <= 0 || tn > THUMB_MAX) return null;
+    if (p.animated !== undefined && typeof p.animated !== 'boolean') return null;
+    return { ...f, thumb: { mime: 'image/webp', data: p.thumb.data }, animated: p.animated === true };
+  },
+  look(p) {
+    if (!shape(p, [], ['frame', 'effect', 'avatarCrop', 'bannerPos']) || Object.keys(p).length === 0) return null;
+    const out = {};
+    if (p.frame !== undefined) { if (p.frame !== null && !FRAME_IDS.includes(p.frame)) return null; out.frame = p.frame; }
+    if (p.effect !== undefined) { if (p.effect !== null && !EFFECT_IDS.includes(p.effect)) return null; out.effect = p.effect; }
+    if (p.avatarCrop !== undefined) {
+      if (p.avatarCrop === null) out.avatarCrop = null;
+      else {
+        if (!shape(p.avatarCrop, ['x', 'y', 'zoom'])) return null;
+        const { x, y, zoom } = p.avatarCrop;
+        const num = (n, lo, hi) => typeof n === 'number' && Number.isFinite(n) && n >= lo && n <= hi;
+        if (!num(x, 0, 100) || !num(y, 0, 100) || !num(zoom, 1, 3)) return null;
+        out.avatarCrop = { x, y, zoom };
+      }
+    }
+    if (p.bannerPos !== undefined) {
+      if (!(Number.isInteger(p.bannerPos) && p.bannerPos >= 0 && p.bannerPos <= 100)) return null;
+      out.bannerPos = p.bannerPos;
+    }
+    return out;
+  },
+  reorder(p) {
+    if (!shape(p, ['serverId', 'channels'], ['categories'])) return null;
+    const serverId = uuid(p.serverId);
+    if (!serverId || !Array.isArray(p.channels) || p.channels.length === 0 || p.channels.length > MAX_LAYOUT) return null;
+    const pos = (n) => Number.isInteger(n) && n >= 0 && n <= 10000;
+    const channels = [];
+    for (const c of p.channels) {
+      if (!shape(c, ['id', 'categoryId', 'position'])) return null;
+      const id = uuid(c.id);
+      const categoryId = c.categoryId === null ? null : uuid(c.categoryId);
+      if (!id || (c.categoryId !== null && !categoryId) || !pos(c.position)) return null;
+      channels.push({ id, categoryId, position: c.position });
+    }
+    if (new Set(channels.map((c) => c.id)).size !== channels.length) return null;
+    const out = { serverId, channels };
+    if (p.categories !== undefined && p.categories !== null) {
+      if (!Array.isArray(p.categories) || p.categories.length > MAX_LAYOUT) return null;
+      const categories = [];
+      for (const c of p.categories) {
+        if (!shape(c, ['id', 'position'])) return null;
+        const id = uuid(c.id);
+        if (!id || !pos(c.position)) return null;
+        categories.push({ id, position: c.position });
+      }
+      if (new Set(categories.map((c) => c.id)).size !== categories.length) return null;
+      out.categories = categories;
+    }
+    return out;
+  },
+  voiceMove(p) {
+    if (!shape(p, ['serverId', 'userId', 'channelId'])) return null;
+    const serverId = uuid(p.serverId);
+    const userId = uuid(p.userId);
+    const channelId = uuid(p.channelId);
+    return serverId && userId && channelId ? { serverId, userId, channelId } : null;
+  },
   serverCreate(p) {
     if (!shape(p, ['name'], ['iconColor']) || !str(p.name, 200)) return null;
     if (p.iconColor !== undefined && !(Number.isInteger(p.iconColor) && p.iconColor >= 0 && p.iconColor <= 7)) return null;
@@ -301,8 +375,13 @@ const API = Object.freeze([
   { method: 'openDm', channel: 'gr:social:openDm', validate: V.userId, run: (a, d) => a.openDm(d.userId), view: true },
   { method: 'setStatus', channel: 'gr:social:status', validate: V.status, run: (a, d) => a.setStatus(d.status), view: true },
   { method: 'setCustomStatus', channel: 'gr:social:customStatus', validate: V.customStatus, run: (a, d) => a.setCustomStatus(d.text), view: true },
-  { method: 'uploadAvatar', channel: 'gr:social:avatar', validate: V.image, run: (a, d) => a.uploadAvatar(d), view: true },
+  { method: 'uploadAvatar', channel: 'gr:social:avatar', validate: V.profileMedia, run: (a, d) => a.uploadAvatar(d), view: true },
   { method: 'removeAvatar', channel: 'gr:social:avatarRemove', validate: V.none, run: (a) => a.removeAvatar(), view: true },
+  // Etapa 7: personalização do perfil
+  { method: 'uploadBanner', channel: 'gr:look:banner', validate: V.profileMedia, run: (a, d) => a.uploadBanner(d), view: true },
+  { method: 'removeBanner', channel: 'gr:look:bannerRemove', validate: V.none, run: (a) => a.removeBanner(), view: true },
+  { method: 'updateProfileLook', channel: 'gr:look:update', validate: V.look, run: (a, d) => a.updateProfileLook(d), view: true },
+  { method: 'resetProfileLook', channel: 'gr:look:reset', validate: V.none, run: (a) => a.resetProfileLook(), view: true },
   // Servidores
   { method: 'createServer', channel: 'gr:server:create', validate: V.serverCreate, run: (a, d) => a.createServer(d), view: true },
   { method: 'previewInvite', channel: 'gr:server:preview', validate: V.code, run: (a, d) => a.previewInvite(d.code), raw: (invite) => ({ invite }) },
@@ -327,6 +406,8 @@ const API = Object.freeze([
   { method: 'deleteCategory', channel: 'gr:channel:deleteCategory', validate: V.categoryId, run: (a, d) => a.deleteCategory(d.categoryId), view: true },
   { method: 'createChannel', channel: 'gr:channel:create', validate: V.channelCreate, run: (a, d) => a.createChannel(d), view: true },
   { method: 'updateChannel', channel: 'gr:channel:update', validate: V.channelUpdate, run: (a, d) => a.updateChannel(d), view: true },
+  { method: 'reorderChannels', channel: 'gr:channel:reorder', validate: V.reorder, run: (a, d) => a.reorderChannels(d), view: true },
+  { method: 'moveVoiceMember', channel: 'gr:voice:move', validate: V.voiceMove, run: (a, d) => a.moveVoiceMember(d), view: true },
   { method: 'deleteChannel', channel: 'gr:channel:delete', validate: V.channelId, run: (a, d) => a.deleteChannel(d.channelId), view: true },
   // Mensagens
   { method: 'sendMessageV2', channel: 'gr:msg:send', validate: V.send, run: (a, d) => a.sendMessage(d), view: true },

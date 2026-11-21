@@ -6,6 +6,12 @@ const { isUuid } = require('./rest');
 const { validPhoto } = require('../core/socialPhoto');
 
 const PROFILE_COLS = 'id,username,display_name,avatar_color,avatar_path,about,custom_status,status';
+// Etapa 7 (LUMENEX): aparência do perfil (0007_lumenex.sql). Sem a 0007, o app pede só as colunas antigas.
+const LOOK_COLS = 'banner_path,avatar_thumb_path,banner_thumb_path,avatar_animated,banner_animated,avatar_crop,banner_pos,avatar_frame,profile_effect,appearance_theme';
+const FRAMES = Object.freeze(['gold', 'fire', 'lightning', 'arcane', 'shadow', 'ice', 'red', 'particles']);
+const EFFECTS = Object.freeze(['burst', 'flames', 'sparks', 'magic', 'mist', 'crystal', 'waves', 'pulse']);
+const THEMES = Object.freeze(['light', 'dark', 'midnight']);
+const LOOK_RETRY_MS = 5 * 60 * 1000;
 const USERNAME_RE = /^[a-z0-9_.]{2,32}$/;
 const CHUNK = 80;
 
@@ -42,6 +48,50 @@ async function selectWithPhoto(rest, build, cols) {
   return rest.select(build(cols));
 }
 
+// Bancos sem a 0007: lembra por 5 min (depois tenta de novo — o Felipe pode ter rodado o SQL).
+const lookMissingAt = new WeakMap(); // rest -> momento em que faltou
+
+/** SELECT de perfis com as colunas da 0007 quando existirem; senão as antigas (com `photo` se houver). */
+async function selectProfiles(rest, build, now = Date.now) {
+  const missing = rest && typeof rest === 'object' ? lookMissingAt.get(rest) : undefined;
+  if (rest && typeof rest === 'object' && (missing === undefined || now() - missing > LOOK_RETRY_MS)) {
+    try {
+      const rows = await selectWithPhoto(rest, build, `${PROFILE_COLS},${LOOK_COLS}`);
+      lookMissingAt.delete(rest);
+      return rows;
+    } catch (err) {
+      if (!err || err.code !== 'needs_migration') throw err;
+      const rows = await selectWithPhoto(rest, build, PROFILE_COLS);
+      lookMissingAt.set(rest, now());
+      return rows;
+    }
+  }
+  return selectWithPhoto(rest, build, PROFILE_COLS);
+}
+
+function hasLookColumns(rest) {
+  return !(rest && lookMissingAt.has(rest));
+}
+
+/** Recorte do avatar: ponto focal x/y em % e zoom 1..3; qualquer outra coisa vira null. */
+function cleanCrop(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const { x, y, zoom } = v;
+  const num = (n, lo, hi) => typeof n === 'number' && Number.isFinite(n) && n >= lo && n <= hi;
+  if (!num(x, 0, 100) || !num(y, 0, 100) || !num(zoom, 1, 3)) return null;
+  return { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, zoom: Math.round(zoom * 100) / 100 };
+}
+
+/** Caminho do perfil no bucket avatars (só `<uid>/avatar|banner/...`, sem `..`). */
+function ownPath(v, id, kind) {
+  return typeof v === 'string' && v.length <= 512 && !v.includes('..') && v.startsWith(`${id}/${kind}/`) ? v : null;
+}
+
+const EMPTY_LOOK = Object.freeze({
+  avatarThumbUrl: null, bannerUrl: null, bannerThumbUrl: null, animatedAvatar: false, animatedBanner: false,
+  avatarCrop: null, bannerPos: 50, frame: null, effect: null,
+});
+
 function createUserCache({ rest } = {}) {
   const users = new Map(); // id -> {id, username, displayName, avatarColor, avatarUrl, about, customStatus, status}
 
@@ -49,12 +99,21 @@ function createUserCache({ rest } = {}) {
     if (!row || !isUuid(row.id)) return null;
     const id = row.id.toLowerCase();
     const username = typeof row.username === 'string' && USERNAME_RE.test(row.username) ? row.username : null;
-    const displayName = (cleanText(row.display_name, 32) || username || 'fantasma').replace(/[<>]/g, '');
+    const displayName = (cleanText(row.display_name, 32) || username || 'Desconhecido').replace(/[<>]/g, '');
     const color = Number.isInteger(row.avatar_color) && row.avatar_color >= 0 && row.avatar_color <= 7
       ? row.avatar_color : (parseInt(id.slice(0, 2), 16) % 8);
     const avatarUrl = (typeof row.avatar_path === 'string' && rest ? rest.publicUrl('avatars', row.avatar_path) : null)
       || legacyPhoto(row.photo);
     const status = ['online', 'idle', 'dnd', 'invisible'].includes(row.status) ? row.status : 'online';
+    const pub = (p) => (p && rest ? rest.publicUrl('avatars', p) : null);
+    const animatedAvatar = row.avatar_animated === true;
+    const thumbPath = ownPath(row.avatar_thumb_path, id, 'avatar');
+    // Lista/chat: miniatura estática; avatar antigo (≤ 2 MB, estático) serve de miniatura também.
+    const avatarThumbUrl = pub(thumbPath) || (animatedAvatar ? null : avatarUrl);
+    const bannerPath = ownPath(row.banner_path, id, 'banner');
+    const bannerThumbPath = bannerPath
+      ? (ownPath(row.banner_thumb_path, id, 'banner') || bannerPath.replace(/\.[a-z0-9]{2,5}$/i, '.thumb.webp')) : null;
+    const bannerPos = Number.isInteger(row.banner_pos) && row.banner_pos >= 0 && row.banner_pos <= 100 ? row.banner_pos : 50;
     return {
       id,
       username: username || `user_${id.slice(0, 6)}`,
@@ -62,6 +121,19 @@ function createUserCache({ rest } = {}) {
       avatarColor: color,
       avatarUrl,
       avatarPath: typeof row.avatar_path === 'string' ? row.avatar_path : null,
+      avatarThumbPath: thumbPath,
+      avatarThumbUrl,
+      animatedAvatar,
+      bannerPath,
+      bannerThumbPath,
+      bannerUrl: pub(bannerPath),
+      bannerThumbUrl: bannerThumbPath && bannerThumbPath !== bannerPath ? pub(bannerThumbPath) : null,
+      animatedBanner: Boolean(bannerPath) && row.banner_animated === true,
+      avatarCrop: cleanCrop(row.avatar_crop),
+      bannerPos,
+      frame: FRAMES.includes(row.avatar_frame) ? row.avatar_frame : null,
+      effect: EFFECTS.includes(row.profile_effect) ? row.profile_effect : null,
+      appearanceTheme: THEMES.includes(row.appearance_theme) ? row.appearance_theme : null,
       about: cleanText(row.about, 190),
       customStatus: cleanText(row.custom_status, 128),
       status,
@@ -80,14 +152,14 @@ function createUserCache({ rest } = {}) {
     return out;
   }
 
-  /** Busca perfis que ainda não estão no cache (falha silenciosa: a tela mostra "fantasma"). */
+  /** Busca perfis que ainda não estão no cache (falha silenciosa: a tela mostra "Desconhecido"). */
   async function ensure(ids, { force = false } = {}) {
     const want = [...new Set((ids || []).filter(isUuid).map((s) => s.toLowerCase()))]
       .filter((id) => force || !users.has(id));
     for (let i = 0; i < want.length; i += CHUNK) {
       const part = want.slice(i, i + CHUNK);
       try {
-        const rows = await selectWithPhoto(rest, (cols) => `/rest/v1/profiles?select=${cols}&id=in.(${part.join(',')})`, PROFILE_COLS);
+        const rows = await selectProfiles(rest, (cols) => `/rest/v1/profiles?select=${cols}&id=in.(${part.join(',')})`);
         upsertRows(rows);
       } catch { /* sem perfil: placeholder */ }
     }
@@ -100,9 +172,17 @@ function createUserCache({ rest } = {}) {
   function lite(id) {
     const u = users.get(id);
     if (!u) {
-      return { id, username: `user_${String(id).slice(0, 6)}`, displayName: 'fantasma', avatarColor: parseInt(String(id).slice(0, 2), 16) % 8 || 0, avatarUrl: null };
+      return {
+        id, username: `user_${String(id).slice(0, 6)}`, displayName: 'Desconhecido', avatarColor: parseInt(String(id).slice(0, 2), 16) % 8 || 0, avatarUrl: null,
+        ...EMPTY_LOOK,
+      };
     }
-    return { id: u.id, username: u.username, displayName: u.displayName, avatarColor: u.avatarColor, avatarUrl: u.avatarUrl };
+    return {
+      id: u.id, username: u.username, displayName: u.displayName, avatarColor: u.avatarColor, avatarUrl: u.avatarUrl,
+      avatarThumbUrl: u.avatarThumbUrl, bannerUrl: u.bannerUrl, bannerThumbUrl: u.bannerThumbUrl,
+      animatedAvatar: u.animatedAvatar, animatedBanner: u.animatedBanner,
+      avatarCrop: u.avatarCrop ? { ...u.avatarCrop } : null, bannerPos: u.bannerPos, frame: u.frame, effect: u.effect,
+    };
   }
 
   /** Mapa para view.users (só ids pedidos). */
@@ -126,4 +206,7 @@ function createUserCache({ rest } = {}) {
   return { upsertRows, ensure, get, lite, viewMap, findByUsername, clear, fromRow };
 }
 
-module.exports = { createUserCache, PROFILE_COLS, USERNAME_RE, selectWithPhoto, legacyPhoto };
+module.exports = {
+  createUserCache, PROFILE_COLS, LOOK_COLS, USERNAME_RE, selectWithPhoto, selectProfiles, hasLookColumns, legacyPhoto,
+  cleanCrop, FRAMES, EFFECTS, THEMES,
+};

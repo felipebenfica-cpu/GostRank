@@ -17,6 +17,12 @@ const { createAppServices } = require('./services');
 app.enableSandbox();
 protocol.registerScheme();
 
+// LUMENEX: o nome mostrado mudou, mas a pasta de dados continua a antiga ("Ghost Rank"), para manter a
+// sessão, o rastreador e as preferências de quem já usava. Precisa vir antes do bloqueio de instância única.
+const LEGACY_USER_DATA_DIR = 'Ghost Rank';
+app.setName('LUMENEX');
+app.setPath('userData', path.join(app.getPath('appData'), LEGACY_USER_DATA_DIR));
+
 const RENDERER_DIR = path.join(__dirname, '..', 'renderer');
 
 let mainWindow = null;
@@ -212,8 +218,8 @@ function createWindow() {
     minWidth: 480,
     minHeight: 560,
     show: false,
-    title: 'Ghost Rank',
-    backgroundColor: '#0e0f13',
+    title: 'LUMENEX',
+    backgroundColor: '#000000',
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'preload.js'),
       contextIsolation: true,

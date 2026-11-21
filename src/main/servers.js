@@ -403,6 +403,84 @@ function createServersService({ rest, users, onChange = () => {} } = {}) {
     await reloadSelected();
   }
 
+  // ---------------- Etapa 7: arrastar e soltar (só ADM; o banco confere de novo) ----------------
+  function isAdminOf(gid) {
+    const s = list.find((x) => x.id === gid);
+    return Boolean(s && (s.role === 'owner' || s.role === 'admin'));
+  }
+
+  /**
+   * Nova ordem das salas (e, opcional, das categorias). Otimista: a tela muda na hora e volta
+   * como estava se o banco recusar.
+   */
+  async function reorderChannels({ serverId, channels, categories = null }) {
+    const gid = needServer(serverId);
+    if (!details || details.id !== gid) throw appError('invalid_layout');
+    if (!isAdminOf(gid)) throw appError('not_admin');
+    const chanIds = new Set(details.channels.map((c) => c.id));
+    const catIds = new Set(details.categories.map((c) => c.id));
+    const seen = new Set();
+    const cleanChannels = [];
+    for (const c of channels) {
+      const id = String(c.id).toLowerCase();
+      const cat = c.categoryId === null ? null : String(c.categoryId).toLowerCase();
+      if (!chanIds.has(id) || seen.has(id) || (cat !== null && !catIds.has(cat))) throw appError('invalid_layout');
+      seen.add(id);
+      cleanChannels.push({ id, categoryId: cat, position: c.position });
+    }
+    let cleanCats = null;
+    if (categories) {
+      const seenCat = new Set();
+      cleanCats = [];
+      for (const c of categories) {
+        const id = String(c.id).toLowerCase();
+        if (!catIds.has(id) || seenCat.has(id)) throw appError('invalid_layout');
+        seenCat.add(id);
+        cleanCats.push({ id, position: c.position });
+      }
+    }
+    const before = { channels: details.channels.map((c) => ({ ...c })), categories: details.categories.map((c) => ({ ...c })) };
+    const byId = new Map(cleanChannels.map((c) => [c.id, c]));
+    details.channels = details.channels.map((c) => (byId.has(c.id) ? { ...c, categoryId: byId.get(c.id).categoryId, position: byId.get(c.id).position } : c));
+    if (cleanCats) {
+      const catById = new Map(cleanCats.map((c) => [c.id, c]));
+      details.categories = details.categories.map((c) => (catById.has(c.id) ? { ...c, position: catById.get(c.id).position } : c))
+        .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
+    }
+    emit();
+    const gen = generation;
+    try {
+      await rest.rpc('reorder_channels', { p_group: gid, p_channels: cleanChannels, p_categories: cleanCats });
+    } catch (err) {
+      if (gen === generation && details && details.id === gid) {
+        details.channels = before.channels;
+        details.categories = before.categories;
+        emit();
+      }
+      if (err && err.code === 'needs_migration') throw appError('needs_migration_0007');
+      throw err;
+    }
+  }
+
+  /** Move alguém para outra sala de voz do mesmo servidor (o banco avisa a pessoa no tópico me:). */
+  async function moveVoiceMember({ serverId, userId, channelId }) {
+    const gid = needServer(serverId);
+    const uid = needUser(userId);
+    if (!isUuid(channelId)) throw appError('invalid_channel');
+    const cid = channelId.toLowerCase();
+    if (!isAdminOf(gid)) throw appError('not_admin');
+    if (details && details.id === gid) {
+      const ch = details.channels.find((c) => c.id === cid);
+      if (!ch || ch.kind !== 'voice') throw appError('invalid_channel');
+    }
+    try {
+      await rest.rpc('move_voice_member', { p_group: gid, p_user: uid, p_channel: cid });
+    } catch (err) {
+      if (err && err.code === 'needs_migration') throw appError('needs_migration_0007');
+      throw err;
+    }
+  }
+
   // ---------------- View ----------------
   function getList() {
     return list.map(({ photo, ...s }) => ({ ...s, iconUrl: iconUrl(s.iconPath, photo) }));
@@ -459,7 +537,7 @@ function createServersService({ rest, users, onChange = () => {} } = {}) {
     refreshList, select, reloadSelected, create, previewInvite, join, leave, remove, update, uploadIcon,
     createInvite, listInvites, revokeInvite, setMemberRole, transferOwnership, kickMember, banMember, unbanMember,
     listBans, setNickname, createCategory, updateCategory, deleteCategory, createChannel, updateChannel, deleteChannel,
-    getList, getSelected, defaultTextChannel, findChannel, serverOfChannel, memberIds, clear,
+    reorderChannels, moveVoiceMember, getList, getSelected, defaultTextChannel, findChannel, serverOfChannel, memberIds, clear,
     getSelectedId: () => selectedId, has: (id) => list.some((s) => s.id === id), getMeId: () => meId,
   };
 }

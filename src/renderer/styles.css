@@ -1,43 +1,48 @@
 /* ==========================================================================
-   Ghost Rank - tema fantasma (escuro). Sem recursos externos.
+   LUMENEX - identidade preta, dourada e vermelha. Sem recursos externos.
    Organização: tokens > base > layout > componentes > diálogos > utilitários
+   (os nomes --ghost/--ghost-strong ficam por compatibilidade: agora são o dourado da marca)
    ========================================================================== */
 
 /* ---- Tokens ------------------------------------------------------------ */
 :root {
   color-scheme: dark;
 
-  /* Superfícies */
-  --bg: #0a0c14;
-  --bg-glow: #151a33;
-  --surface: #131726;
-  --surface-2: #1a1f33;
-  --surface-3: #222842;
-  --border: #2b3252;
-  --border-strong: #3d466e;
+  /* Superfícies (escuro: preto quente) */
+  --bg: #0b0b0d;
+  --bg-glow: #17140d;
+  --surface: #141416;
+  --surface-2: #1b1b1f;
+  --surface-3: #25252a;
+  --border: #2f2e34;
+  --border-strong: #46444d;
 
   /* Texto (contraste AA sobre --surface e --bg) */
-  --text: #eceefa;
-  --text-muted: #a9afca;
-  --text-faint: #8e95b3;
+  --text: #f2efe8;
+  --text-muted: #b6b1a6;
+  --text-faint: #9a958b;
 
-  /* Marca */
-  --ghost: #8fe9d6;
-  --ghost-strong: #5fd6bd;
-  --violet: #a798ff;
-  --on-accent: #07120f;
+  /* Marca LUMENEX */
+  --brand-gold: #d4a72c;
+  --brand-gold-soft: #f3d27a;
+  --brand-red: #e5383b;
+  --ghost: #e0b440;
+  --ghost-strong: #c99a22;
+  --accent: var(--ghost);
+  --violet: #b9a6ff;
+  --on-accent: #14100a;
 
   /* Semânticas */
   --win: #6be4a6;
   --win-bg: rgba(107, 228, 166, 0.12);
-  --loss: #ff8d9c;
-  --loss-bg: rgba(255, 141, 156, 0.12);
+  --loss: #ff7b7e;
+  --loss-bg: rgba(255, 123, 126, 0.12);
   --warn: #ffd079;
   --warn-bg: rgba(255, 208, 121, 0.1);
   --info: #9fb4ff;
   --info-bg: rgba(159, 180, 255, 0.1);
-  --danger: #ff8d9c;
-  --danger-solid: #c8364b;
+  --danger: #ff7b7e;
+  --danger-solid: #c62828;
   --on-danger: #ffffff;
 
   /* Tipografia (somente fontes do sistema) */
@@ -67,14 +72,15 @@
   --dur: 220ms;
 
   /* Colunas da janela */
-  --rail-bg: #07090f;
-  --sidebar-bg: #0e111c;
-  --user-bg: #0b0e17;
+  --rail-bg: #070708;
+  --sidebar-bg: #0f0f11;
+  --user-bg: #0b0b0d;
   --main-bg: var(--surface);
-  --members-bg: #0e111c;
-  --hover: rgba(236, 238, 250, 0.05);
-  --active: rgba(236, 238, 250, 0.1);
-  --msg-hover: rgba(4, 6, 12, 0.22);
+  --members-bg: #0f0f11;
+  --hover: rgba(242, 239, 232, 0.05);
+  --active: rgba(242, 239, 232, 0.1);
+  --msg-hover: rgba(0, 0, 0, 0.22);
+  --dnd-line: var(--brand-gold);
 
   /* Cores de avatar/ícone (0 a 7): fundo e texto */
   --av-0: #1d4740; --av-fg-0: #8fe9d6;
@@ -158,6 +164,7 @@ button, input, textarea { font: inherit; color: inherit; }
 
 .ghost-body { fill: var(--ghost); }
 .ghost-eye { fill: var(--bg); }
+.lx-spark { fill: var(--brand-red); }
 
 .btn-icon {
   flex: none;
@@ -1412,38 +1419,49 @@ body { overflow: hidden; background: var(--rail-bg); }
 /* ==========================================================================
    Etapa 6 — casca no modelo do Discord (shell.js / ui.js)
    ========================================================================== */
-html { font-size: calc(100% * var(--font-scale, 100) / 100); }
+html { font-size: calc(100% * var(--font-scale, 100) / 100); background: var(--rail-bg); }
 
 /* ---- Temas: meia-noite e claro ---------------------------------------- */
 [data-theme="midnight"] {
+  /* Meia-Noite (AMOLED): preto puro, superfícies #0A0A0A/#121212, dourado discreto */
   --bg: #000000;
-  --bg-glow: #05060a;
-  --surface: #07080c;
-  --surface-2: #0d0f16;
-  --surface-3: #151823;
-  --border: #1d2130;
-  --border-strong: #2c3147;
+  --bg-glow: #000000;
+  --surface: #0a0a0a;
+  --surface-2: #121212;
+  --surface-3: #1c1c1c;
+  --border: #262626;
+  --border-strong: #333333;
+  --text: #f0eee9;
+  --text-muted: #b0aca3;
+  --text-faint: #96928a;
+  --ghost: #d9ae3c;
+  --ghost-strong: #b98f1e;
   --rail-bg: #000000;
-  --sidebar-bg: #050609;
-  --user-bg: #030305;
-  --main-bg: #07080c;
-  --members-bg: #050609;
+  --sidebar-bg: #0a0a0a;
+  --user-bg: #000000;
+  --main-bg: #000000;
+  --members-bg: #0a0a0a;
+  --hover: rgba(255, 255, 255, 0.05);
+  --active: rgba(255, 255, 255, 0.09);
   --msg-hover: rgba(255, 255, 255, 0.03);
+  --av-0: #10302a; --av-1: #221d45; --av-2: #172341; --av-3: #352a10;
+  --av-4: #12301f; --av-5: #36161f; --av-6: #0d313b; --av-7: #36200d;
 }
 [data-theme="light"] {
   color-scheme: light;
-  --bg: #e9ebf2;
-  --bg-glow: #dfe3f0;
+  --bg: #eeece7;
+  --bg-glow: #e6e1d4;
   --surface: #ffffff;
-  --surface-2: #f3f4f8;
-  --surface-3: #e6e8f0;
-  --border: #d3d7e3;
-  --border-strong: #b5bbcd;
-  --text: #171a26;
-  --text-muted: #4a5068;
-  --text-faint: #5f6680;
-  --ghost: #0b7c69;
-  --ghost-strong: #086354;
+  --surface-2: #f6f5f1;
+  --surface-3: #ebe8e1;
+  --border: #dad6cc;
+  --border-strong: #bdb7aa;
+  --text: #1a1814;
+  --text-muted: #4f4a40;
+  --text-faint: #625d52;
+  --ghost: #8a6400;
+  --ghost-strong: #6f5000;
+  --brand-red: #c62828;
   --violet: #5a48d6;
   --on-accent: #ffffff;
   --win: #0f7a46;
@@ -1456,11 +1474,11 @@ html { font-size: calc(100% * var(--font-scale, 100) / 100); }
   --info-bg: rgba(47, 85, 200, 0.08);
   --danger: #b4233a;
   --danger-solid: #c8364b;
-  --rail-bg: #dde0ea;
-  --sidebar-bg: #f2f3f7;
-  --user-bg: #e8eaf1;
+  --rail-bg: #e4e1d9;
+  --sidebar-bg: #f4f2ed;
+  --user-bg: #ebe8e1;
   --main-bg: #ffffff;
-  --members-bg: #f2f3f7;
+  --members-bg: #f4f2ed;
   --hover: rgba(23, 26, 38, 0.05);
   --active: rgba(23, 26, 38, 0.09);
   --msg-hover: rgba(23, 26, 38, 0.035);
@@ -2108,3 +2126,85 @@ kbd {
 }
 .app[data-auth="out"] .voice-user-controls { display: none; }
 .add-friend-form .btn { flex: none; white-space: nowrap; }
+
+/* ==========================================================================
+   Etapa 7 — LUMENEX: marca, arrastar e soltar (só ADM)
+   ========================================================================== */
+.lx-mark .lx-l { fill: var(--ghost); }
+.lx-mark .lx-spark { fill: var(--brand-red); }
+.rail-home .rail-ghost { width: 30px; height: 30px; }
+.empty-ghost.lx-mark { animation: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .empty-ghost.lx-mark { animation: lx-glow 4s ease-in-out infinite; }
+}
+@keyframes lx-glow {
+  0%, 100% { filter: drop-shadow(0 0 0 transparent); }
+  50% { filter: drop-shadow(0 0 6px rgba(212, 167, 44, 0.45)); }
+}
+
+/* arrastar e soltar */
+[data-dnd] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+body.is-dnd, body.is-dnd * { cursor: grabbing !important; -webkit-user-select: none; user-select: none; }
+.is-drag-source { opacity: 0.45; }
+.dnd-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+  pointer-events: none;
+  max-width: 240px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--dnd-line, var(--ghost));
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.ch-li, section.cat { position: relative; }
+.ch-li.dnd-before::before,
+.ch-li.dnd-after::after,
+section.cat.dnd-before::before,
+section.cat.dnd-after::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--dnd-line, var(--ghost));
+  box-shadow: 0 0 6px rgba(212, 167, 44, 0.55);
+  pointer-events: none;
+}
+.ch-li.dnd-before::before, section.cat.dnd-before::before { top: -1px; }
+.ch-li.dnd-after::after, section.cat.dnd-after::after { bottom: -1px; }
+.ch-li.dnd-inside > .ch-row,
+.cat-head.dnd-inside,
+section.cat.dnd-end {
+  border-radius: var(--radius-sm);
+  background: rgba(212, 167, 44, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(212, 167, 44, 0.55);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ch-li > .ch-row, .cat-head { transition: background-color 120ms var(--ease), box-shadow 120ms var(--ease); }
+}
+@media (forced-colors: active) {
+  .ch-li.dnd-before::before, .ch-li.dnd-after::after, section.cat.dnd-before::before, section.cat.dnd-after::after { background: Highlight; }
+  .ch-li.dnd-inside > .ch-row, .cat-head.dnd-inside, section.cat.dnd-end { outline: 2px solid Highlight; }
+}
+
+/* avatar com GhostLook (moldura/recorte/animação no hover) */
+.avatar.has-look { background: transparent; overflow: visible; }
+.avatar.has-look > .avatar-look { position: absolute; inset: 0; width: 100%; height: 100%; }
+.avatar.has-look > .status-dot { z-index: 2; }
+
+/* cartão de perfil: banner com imagem (posição vertical vem de bannerPos) */
+.pcard-banner { position: relative; overflow: hidden; }
+.pcard-banner.has-image { height: 104px; filter: none; background: var(--surface-3); }
+.pcard-banner-media { display: block; width: 100%; height: 100%; object-fit: cover; }
+.profile-pop { isolation: isolate; }
+.profile-pop .pcard-close { z-index: 3; }

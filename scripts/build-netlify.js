@@ -15,19 +15,29 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { build: buildPreviewHtml, RENDERER_CSS, RENDERER_JS } = require('./build-preview');
+const { build: buildPreviewHtml, RENDERER_CSS, RENDERER_JS, RENDERER_HEAD_JS, RENDERER_ASSETS } = require('./build-preview');
 
 const ROOT = path.join(__dirname, '..');
 const RENDERER = path.join(ROOT, 'src', 'renderer');
 const PREVIEW = path.join(ROOT, 'preview');
 const PREVIEW_JS = ['fake-livekit.js', 'mock-bridge.js'];
 const LIVEKIT_UMD = path.join(ROOT, 'node_modules', 'livekit-client', 'dist', 'livekit-client.umd.js');
-const APP_FILES = [...RENDERER_CSS, ...RENDERER_JS, 'app.js'];
+const APP_FILES = [...RENDERER_CSS, ...RENDERER_HEAD_JS, ...RENDERER_JS, 'app.js', ...RENDERER_ASSETS];
 
-// Ícone da aba (o mesmo fantasma do trilho), em SVG sem script.
-const FAVICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#141824"/>'
-  + '<path fill="#8de8d4" d="M12 3C8 3 5 6.2 5 10.2V20l2.2-1.7L9.3 20l2.7-1.8 2.7 1.8 2.1-1.7L19 20v-9.8C19 6.2 16 3 12 3z"/>'
-  + '<circle cx="9.6" cy="10.4" r="1.4" fill="#141824"/><circle cx="14.4" cy="10.4" r="1.4" fill="#141824"/></svg>';
+// Metadados da versão web (compartilhamento de link e app instalado/PWA). Só a web usa o manifest:
+// no Electron a CSP não tem manifest-src e o app já é "instalado".
+const WEB_HEAD = [
+  '  <link rel="manifest" href="manifest.webmanifest">',
+  '  <link rel="apple-touch-icon" href="brand/icon-192.png">',
+  '  <meta name="application-name" content="LUMENEX">',
+  '  <meta name="apple-mobile-web-app-title" content="LUMENEX">',
+  '  <meta property="og:type" content="website">',
+  '  <meta property="og:site_name" content="LUMENEX">',
+  '  <meta property="og:title" content="LUMENEX">',
+  '  <meta property="og:description" content="MMR de Dota 2, amigos, servidores, chat e voz.">',
+  '  <meta property="og:image" content="brand/icon-512.png">',
+  '  <meta name="twitter:card" content="summary">',
+].join('\n');
 
 function copy(src, dest) {
   fs.mkdirSync(path.dirname(dest), { recursive: true });
@@ -35,7 +45,7 @@ function copy(src, dest) {
 }
 
 function checkRefs(html, dir) {
-  const refs = [...html.matchAll(/(?:src|href)="([^"#:]+\.(?:js|css))"/g)].map((m) => m[1]);
+  const refs = [...html.matchAll(/(?:src|href|content)="([^"#:]+\.(?:js|css|svg|png|webmanifest))"/g)].map((m) => m[1]);
   const missing = refs.filter((r) => !fs.existsSync(path.join(dir, r)));
   if (missing.length) throw new Error('Arquivos referenciados que faltam em ' + path.basename(dir) + '/: ' + missing.join(', '));
 }
@@ -57,6 +67,7 @@ function cspFor(origin) {
     "style-src 'self'",
     `img-src 'self' data: blob: ${origin}`,
     "font-src 'self'",
+    "manifest-src 'self'",
     "media-src 'self' blob: mediastream:",
     "worker-src 'self' blob:",
     `connect-src 'self' ${origin} ${wss} https://api.opendota.com https://*.livekit.cloud wss://*.livekit.cloud`,
@@ -107,8 +118,10 @@ function buildWeb({ outDir = path.join(ROOT, 'dist'), log = console.log } = {}) 
   const marker = '<script src="vendor/livekit-client.umd.js"></script>';
   if (!html.includes(marker)) throw new Error('index.html sem o script do LiveKit (ponto de injeção)');
   html = html.replace(marker, marker + '\n  <script src="bridge.js"></script>');
-  if (!/rel="icon"/.test(html)) html = html.replace('</head>', '  <link rel="icon" href="favicon.svg" type="image/svg+xml">\n</head>');
-  fs.writeFileSync(path.join(outDir, 'favicon.svg'), FAVICON_SVG, 'utf8');
+  if (!html.includes('</head>')) throw new Error('index.html sem </head>');
+  html = html.replace('</head>', WEB_HEAD + '\n</head>');
+  // favicon também na raiz (navegadores que pedem /favicon.ico ou /favicon.svg direto)
+  copy(path.join(RENDERER, 'brand', 'favicon.svg'), path.join(outDir, 'favicon.svg'));
   checkRefs(html, outDir);
   fs.writeFileSync(path.join(outDir, 'index.html'), html, 'utf8');
   fs.writeFileSync(path.join(outDir, '_headers'), headersFile(supabaseOrigin()), 'utf8');
@@ -123,7 +136,7 @@ function buildPreview({ outDir = path.join(ROOT, 'dist-preview'), log = console.
   for (const f of APP_FILES) copy(path.join(RENDERER, f), path.join(outDir, f));
   for (const f of PREVIEW_JS) copy(path.join(PREVIEW, f), path.join(outDir, f));
   let html = buildPreviewHtml().replace(/\.\.\/src\/renderer\//g, '');
-  html = html.replace('<title>Ghost Rank (prévia)</title>', '<title>Ghost Rank — Prévia</title>');
+  html = html.replace('<title>LUMENEX (prévia)</title>', '<title>LUMENEX — Prévia</title>');
   checkRefs(html, outDir);
   fs.writeFileSync(path.join(outDir, 'index.html'), html, 'utf8');
   log('✓ dist-preview/ pronto (prévia com dados falsos)');

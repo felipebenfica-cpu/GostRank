@@ -1,4 +1,4 @@
-/* Ghost Rank — chat (frente R2). Usa os tokens de styles.css; nada de cor fixa onde existe token. */
+/* LUMENEX — chat (frente R2). Usa os tokens de styles.css; nada de cor fixa onde existe token. */
 
 .gc-root {
   --gc-scale: calc(var(--font-scale, 100) / 100);
@@ -469,3 +469,10 @@
   .gc-msg:focus-visible, .gc-reaction.is-me { outline: 2px solid CanvasText; }
   .gc-spoiler:not(.is-revealed) { background: CanvasText; }
 }
+
+/* ---- LUMENEX: avatar com moldura (GhostLook) ------------------------------ */
+.gc-avatar-look { flex: none; }
+.gc-avatar-look-16 { width: 16px; height: 16px; }
+.gc-avatar-look-24 { width: 24px; height: 24px; }
+.gc-avatar-look-40 { width: 40px; height: 40px; }
+.gc-avatar-look-80 { width: 80px; height: 80px; }

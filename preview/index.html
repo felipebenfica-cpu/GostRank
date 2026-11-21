@@ -4,12 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark light">
+  <meta name="description" content="LUMENEX — MMR de Dota 2, amigos, servidores, chat e voz.">
+  <meta name="theme-color" content="#000000">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'">
-  <title>Ghost Rank (prévia)</title>
+  <title>LUMENEX (prévia)</title>
+  <link rel="icon" href="../src/renderer/brand/favicon.svg" type="image/svg+xml">
+  <script src="../src/renderer/theme-boot.js"></script>
   <link rel="stylesheet" href="../src/renderer/styles.css">
   <link rel="stylesheet" href="../src/renderer/chat.css">
   <link rel="stylesheet" href="../src/renderer/settings.css">
   <link rel="stylesheet" href="../src/renderer/voice.css">
+  <link rel="stylesheet" href="../src/renderer/profile-look.css">
 </head>
 <body>
   <a class="skip-link" href="#conteudo">Ir para o conteúdo</a>
@@ -22,10 +27,9 @@
         <li id="rail-home-item" class="rail-item">
           <span class="rail-pill" aria-hidden="true"></span>
           <button id="rail-home" class="rail-btn rail-home" type="button" aria-label="Mensagens diretas e amigos" data-tip="Mensagens diretas">
-            <svg class="rail-ghost" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" focusable="false">
-              <path class="ghost-body" d="M12 2C7.6 2 4 5.5 4 10v11l2.5-2 2.5 2 3-2 3 2 2.5-2 2.5 2V10c0-4.5-3.6-8-8-8z"/>
-              <circle class="ghost-eye" cx="9.2" cy="10.2" r="1.5"/>
-              <circle class="ghost-eye" cx="14.8" cy="10.2" r="1.5"/>
+            <svg class="rail-ghost lx-mark" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" focusable="false">
+              <path class="ghost-body lx-l" d="M6.5 3.5h4.6v12.2h8.2l-2.4 4.8H6.5z"/>
+              <path class="lx-spark" d="M16.4 3.5h2.6l-3.2 6.2h-1.7z"/>
             </svg>
             <span id="rail-home-badge" class="rail-badge" aria-hidden="true" hidden></span>
           </button>
@@ -94,7 +98,7 @@
             <li>
               <button id="nav-ranking" class="channel" type="button">
                 <svg class="channel-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3"/><path d="M7 5H4v2a3 3 0 0 0 3 3"/></svg>
-                <span class="channel-name">Ranking dos fantasmas</span>
+                <span class="channel-name">Ranking do servidor</span>
               </button>
             </li>
           </ul>
@@ -109,7 +113,7 @@
         <button id="user-chip" class="user-chip" type="button" aria-haspopup="menu" aria-label="Seu status">
           <span id="user-avatar-slot" class="user-avatar-slot"></span>
           <span class="user-text">
-            <span id="account-name" class="user-name">Ghost Rank</span>
+            <span id="account-name" class="user-name">LUMENEX</span>
             <span id="user-status" class="user-status"></span>
           </span>
         </button>
@@ -172,7 +176,7 @@
     <!-- 1. Configuração inicial -->
     <section id="setup-view" class="setup" aria-labelledby="setup-title" hidden>
       <div class="card setup-card">
-        <h2 id="setup-title" class="title">Bem-vindo ao Ghost Rank</h2>
+        <h2 id="setup-title" class="title">Bem-vindo ao LUMENEX</h2>
         <p class="lead">Acompanhe seu MMR de Dota 2 partida a partida e veja quanto falta para a sua meta. Tudo fica salvo só neste computador.</p>
 
         <form id="setup-form" class="form" novalidate>
@@ -209,7 +213,7 @@
 
     <!-- 2 a 5. Painel -->
     <div id="dashboard-view" class="dashboard" hidden>
-      <h2 class="visually-hidden">Painel do Ghost Rank</h2>
+      <h2 class="visually-hidden">Painel do LUMENEX</h2>
 
       <section class="card hero" aria-labelledby="hero-label">
         <div class="hero-head">
@@ -255,11 +259,10 @@
       <section class="card matches" aria-labelledby="matches-title">
         <h2 id="matches-title" class="section-title">Partidas</h2>
         <div id="matches-empty" class="empty" hidden>
-          <svg class="empty-ghost" viewBox="0 0 24 24" width="48" height="48" aria-hidden="true" focusable="false">
-            <path class="ghost-body" d="M12 2C7.6 2 4 5.5 4 10v11l2.5-2 2.5 2 3-2 3 2 2.5-2 2.5 2V10c0-4.5-3.6-8-8-8z"/>
-            <circle class="ghost-eye" cx="9.2" cy="10.2" r="1.5"/>
-            <circle class="ghost-eye" cx="14.8" cy="10.2" r="1.5"/>
-          </svg>
+          <svg class="empty-ghost lx-mark" viewBox="0 0 24 24" width="48" height="48" aria-hidden="true" focusable="false">
+              <path class="ghost-body lx-l" d="M6.5 3.5h4.6v12.2h8.2l-2.4 4.8H6.5z"/>
+              <path class="lx-spark" d="M16.4 3.5h2.6l-3.2 6.2h-1.7z"/>
+            </svg>
           <p class="empty-title">Nenhuma partida ainda por aqui</p>
           <p class="empty-text">Tudo certo! Jogue uma ranqueada e, poucos minutos depois de ela terminar, a partida aparece nesta lista e o MMR é atualizado sozinho.</p>
         </div>
@@ -306,7 +309,7 @@
           <section id="view-friends" class="view view-friends" role="tabpanel" aria-labelledby="channel-title" hidden>
             <div id="friends-add" class="friends-add" hidden>
               <h2 class="friends-add-title">Adicionar amigo</h2>
-              <p class="help">Você pode adicionar amigos com o nome de usuário do Ghost Rank deles. Comece a digitar para ver quem aparece.</p>
+              <p class="help">Você pode adicionar amigos com o nome de usuário do LUMENEX deles. Comece a digitar para ver quem aparece.</p>
               <form id="form-add-friend" class="add-friend-form" novalidate>
                 <label for="add-friend-input" class="visually-hidden">Nome de usuário</label>
                 <input id="add-friend-input" type="text" autocomplete="off" spellcheck="false" autocapitalize="off" maxlength="33" placeholder="Digite o nome de usuário, por exemplo luacheia" aria-describedby="add-friend-status" aria-controls="add-friend-results">
@@ -323,11 +326,10 @@
               <h2 id="friends-count" class="friends-count"></h2>
               <ul id="friends-list" class="people-list" role="list" aria-labelledby="friends-count"></ul>
               <div id="friends-empty" class="view-empty friends-empty" hidden>
-                <svg class="empty-ghost" viewBox="0 0 24 24" width="64" height="64" aria-hidden="true" focusable="false">
-                  <path class="ghost-body" d="M12 2C7.6 2 4 5.5 4 10v11l2.5-2 2.5 2 3-2 3 2 2.5-2 2.5 2V10c0-4.5-3.6-8-8-8z"/>
-                  <circle class="ghost-eye" cx="9.2" cy="10.2" r="1.5"/>
-                  <circle class="ghost-eye" cx="14.8" cy="10.2" r="1.5"/>
-                </svg>
+                <svg class="empty-ghost lx-mark" viewBox="0 0 24 24" width="64" height="64" aria-hidden="true" focusable="false">
+              <path class="ghost-body lx-l" d="M6.5 3.5h4.6v12.2h8.2l-2.4 4.8H6.5z"/>
+              <path class="lx-spark" d="M16.4 3.5h2.6l-3.2 6.2h-1.7z"/>
+            </svg>
                 <p id="friends-empty-text" class="view-empty-text"></p>
               </div>
             </div>
@@ -338,7 +340,7 @@
             <div id="voice-fallback" class="view-empty" hidden>
               <svg class="btn-icon" viewBox="0 0 24 24" width="40" height="40" aria-hidden="true" focusable="false"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="21"/><line x1="3" y1="3" x2="21" y2="21"/></svg>
               <p class="view-empty-title">Voz indisponível</p>
-              <p class="view-empty-text">A voz não carregou nesta versão do Ghost Rank. O chat e o ranking continuam funcionando.</p>
+              <p class="view-empty-text">A voz não carregou nesta versão do LUMENEX. O chat e o ranking continuam funcionando.</p>
             </div>
             <div id="voice-stage" class="voice-stage"></div>
           </section>
@@ -358,7 +360,7 @@
             </div>
           </section>
 
-          <!-- Ranking dos fantasmas -->
+          <!-- Ranking do servidor -->
           <section id="view-ranking" class="view view-ranking" aria-labelledby="channel-title" hidden>
             <div class="ranking-wrap">
               <p class="help ranking-help">Quem percorreu mais do caminho entre o MMR inicial e a própria meta fica no topo.</p>
@@ -369,11 +371,10 @@
           <!-- Vazio (sem servidor/canal) -->
           <section id="view-empty" class="view view-empty-page" aria-labelledby="channel-title" hidden>
             <div class="view-empty">
-              <svg class="empty-ghost" viewBox="0 0 24 24" width="72" height="72" aria-hidden="true" focusable="false">
-                <path class="ghost-body" d="M12 2C7.6 2 4 5.5 4 10v11l2.5-2 2.5 2 3-2 3 2 2.5-2 2.5 2V10c0-4.5-3.6-8-8-8z"/>
-                <circle class="ghost-eye" cx="9.2" cy="10.2" r="1.5"/>
-                <circle class="ghost-eye" cx="14.8" cy="10.2" r="1.5"/>
-              </svg>
+              <svg class="empty-ghost lx-mark" viewBox="0 0 24 24" width="72" height="72" aria-hidden="true" focusable="false">
+              <path class="ghost-body lx-l" d="M6.5 3.5h4.6v12.2h8.2l-2.4 4.8H6.5z"/>
+              <path class="lx-spark" d="M16.4 3.5h2.6l-3.2 6.2h-1.7z"/>
+            </svg>
               <p id="empty-title" class="view-empty-title">Nada por aqui</p>
               <p id="empty-text" class="view-empty-text"></p>
             </div>
@@ -419,7 +420,7 @@
     </div>
     <div id="server-pane-join" class="form" hidden>
       <h2 class="dialog-title">Entrar em um servidor</h2>
-      <p class="help">Cole o código ou o link do convite. Convites do Ghost Rank têm 10 letras e números, como <strong>K7M2QX9PTA</strong>.</p>
+      <p class="help">Cole o código ou o link do convite. Convites do LUMENEX têm 10 letras e números, como <strong>K7M2QX9PTA</strong>.</p>
       <form id="form-join-server" class="form" novalidate>
         <div class="field">
           <label for="join-server-code">Código ou link do convite</label>
@@ -808,6 +809,8 @@
   <script src="fake-livekit.js"></script>
   <script src="mock-bridge.js"></script>
   <script src="../src/renderer/ui.js"></script>
+  <script src="../src/renderer/dnd.js"></script>
+  <script src="../src/renderer/profile-look.js"></script>
   <script src="../src/renderer/emoji-data.js"></script>
   <script src="../src/renderer/chat.js"></script>
   <script src="../src/renderer/settings.js"></script>

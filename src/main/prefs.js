@@ -103,18 +103,21 @@ function createPrefs({ store = null } = {}) {
   try { raw = store ? store.load() : null; } catch { raw = null; }
   let prefs = sanitize(raw);
   let nav = raw && isPlain(raw._nav) ? raw._nav : null;
+  // Etapa 7: este aparelho já escolheu um tema? (senão, vale o tema salvo na conta)
+  let themeHere = Boolean(raw && raw._themeHere === true);
 
   function persist() {
     if (!store) return;
-    try { store.save({ ...prefs, _nav: nav }); } catch { /* fica só em memória */ }
+    try { store.save({ ...prefs, _nav: nav, _themeHere: themeHere }); } catch { /* fica só em memória */ }
   }
 
   function get() {
     return JSON.parse(JSON.stringify(prefs));
   }
 
-  function update(patch) {
+  function update(patch, { fromAccount = false } = {}) {
     prefs = mergePrefs(prefs, patch);
+    if (!fromAccount && isPlain(patch.appearance) && 'theme' in patch.appearance) themeHere = true;
     persist();
     return get();
   }
@@ -136,7 +139,7 @@ function createPrefs({ store = null } = {}) {
   function getNav() { return nav ? { ...nav } : null; }
   function setNav(n) { nav = isPlain(n) ? { ...n } : null; persist(); }
 
-  return { get, update, setMuted, isMuted, getNav, setNav };
+  return { get, update, setMuted, isMuted, getNav, setNav, themeChosenHere: () => themeHere };
 }
 
 module.exports = { createPrefs, mergePrefs, sanitize, defaults, TARGET_RE };

@@ -1,4 +1,4 @@
-/* Ghost Rank — GhostChat (frente R2, Etapa 6).
+/* LUMENEX — GhostChat (frente R2, Etapa 6).
    Renderiza view.messages (canal ou DM selecionado) e o compositor.
    Regras: nada de innerHTML com dado; só createElement/textContent. Menções no corpo usam o formato <@uuid>.
    API: GhostChat.init({bridge, root, getView, openProfile, openContextMenu}), update(view),
@@ -196,14 +196,33 @@
   }
 
   // ---------------------------------------------------------------- avatar
+  // Miniatura estática nas listas; o original (pode ser animado e pesado) não carrega aqui.
+  function pickAvatarSrc(user) {
+    var ok = function (v) { return typeof v === 'string' && v.length <= 2048 && /^(https:|data:image\/)/.test(v); };
+    if (ok(user.avatarThumbUrl)) return user.avatarThumbUrl;
+    if (!user.animatedAvatar && ok(user.avatarUrl)) return user.avatarUrl;
+    return '';
+  }
   function avatarEl(user, size) {
+    // LUMENEX: avatar com recorte e moldura (GhostLook); anima só ao passar o mouse.
+    if (user && window.GhostLook && typeof window.GhostLook.avatar === 'function') {
+      try {
+        var look = window.GhostLook.avatar(user, { size: size || 40, animate: 'hover', frame: (size || 40) >= 40 });
+        if (look && look.nodeType === 1) {
+          look.classList.add('gc-avatar-look', 'gc-avatar-look-' + (size || 40));
+          look.setAttribute('aria-hidden', 'true');
+          return look;
+        }
+      } catch (e) { /* cai no avatar simples */ }
+    }
     var a = el('span', 'gc-avatar gc-avatar-' + (size || 40));
     var tone = user && Number.isInteger(user.avatarColor) ? user.avatarColor : 0;
     a.dataset.tone = String(Math.max(0, Math.min(7, tone)));
     a.setAttribute('aria-hidden', 'true');
-    if (user && typeof user.avatarUrl === 'string' && /^(https:|data:image\/)/.test(user.avatarUrl)) {
+    var src = user ? pickAvatarSrc(user) : '';
+    if (src) {
       var img = el('img');
-      img.src = user.avatarUrl;
+      img.src = src;
       img.alt = '';
       img.decoding = 'async';
       img.loading = 'lazy';
@@ -716,7 +735,7 @@
     return JSON.stringify([
       it.body, it.editedAt, !!it.pending, !!it.failed, !!it.pinned, !!it.mentionsMe, it.reactions, it.attachments,
       it.replyTo, replyName, grouped, nameOf(it.authorId), roleOf(it.authorId),
-      p ? [p.user.avatarUrl, p.user.avatarColor] : null, same(st.editingId, it.id), it.createdAt, canPin(), canModerate(), myId()
+      p ? [p.user.avatarUrl, p.user.avatarThumbUrl, p.user.avatarColor, p.user.frame, p.user.avatarCrop ? JSON.stringify(p.user.avatarCrop) : null] : null, same(st.editingId, it.id), it.createdAt, canPin(), canModerate(), myId()
     ]);
   }
 

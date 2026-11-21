@@ -60,6 +60,17 @@ const MESSAGES = Object.freeze({
   invalid_avatar: 'Imagem de perfil inválida.',
   invalid_options: 'Opção inválida.',
   too_many_channels: 'Esse servidor chegou ao limite de canais.',
+  // Etapa 7 (LUMENEX): personalização do perfil, salas
+  profile_too_big: 'A imagem passa de 40 MB. Escolha um arquivo de até 40 MB.',
+  invalid_profile_image: 'Formato não aceito. Use JPG, PNG, GIF ou WebP.',
+  invalid_thumb: 'Não foi possível preparar a miniatura da imagem. Tente de novo.',
+  invalid_look: 'Opção de personalização inválida.',
+  invalid_layout: 'Não foi possível salvar a nova ordem das salas. Tente de novo.',
+  invalid_path: 'Caminho de arquivo inválido.',
+  invalid_media: 'Não foi possível salvar a imagem. Tente enviar de novo.',
+  upload_interrupted: 'A conexão caiu durante o envio. Verifique a internet e tente de novo.',
+  needs_migration_0007: 'Atualize o banco (0007): rode o 0007_lumenex.sql no Supabase para usar esta função.',
+  media_needs_0007: 'Atualize o banco (0007) para enviar imagens de até 40 MB e banners: rode o 0007_lumenex.sql no Supabase.',
   // Gerais
   needs_migration: 'Atualize o banco (0006): esta função ainda não existe no servidor. Rode o 0006_discord.sql no Supabase.',
   rate_limited: 'Muitas tentativas em pouco tempo. Aguarde alguns segundos e tente de novo.',
@@ -110,7 +121,18 @@ function encodePath(p) {
   return String(p).split('/').map((s) => encodeURIComponent(s)).join('/');
 }
 
-function createRest({ fetchImpl, supabaseUrl, anonKey, getAccessToken, timeoutMs = 10000, uploadTimeoutMs = 120000 } = {}) {
+const TUS_CHUNK = 6 * 1024 * 1024; // o Supabase exige blocos de 6 MB (menos o último)
+
+function base64Utf8(text) {
+  const bytes = new TextEncoder().encode(String(text));
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+function createRest({
+  fetchImpl, supabaseUrl, anonKey, getAccessToken, timeoutMs = 10000, uploadTimeoutMs = 120000, retryDelayMs = 700,
+} = {}) {
   const base = normalizeSupabaseUrl(supabaseUrl);
   const fetchFn = fetchImpl || (typeof fetch === 'function' ? fetch : null);
   if (!base || !isValidAnonKey(anonKey) || typeof fetchFn !== 'function') throw appError('unconfigured');
@@ -204,6 +226,98 @@ function createRest({ fetchImpl, supabaseUrl, anonKey, getAccessToken, timeoutMs
     return objectPath;
   }
 
+  /** Requisição crua com cabeçalhos de resposta (TUS precisa de Location e Upload-Offset). */
+  async function rawRequest(url, { method, headers, body, timeout = timeoutMs }) {
+    const ctrl = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, timeout);
+    try {
+      const res = await fetchFn(url, { method, headers, body, signal: ctrl.signal, redirect: 'error' });
+      let text = '';
+      try { text = await res.text(); } catch { text = ''; }
+      let data = null;
+      if (typeof text === 'string' && text.length > 0 && text.length <= MAX_BODY_CHARS) { try { data = JSON.parse(text); } catch { data = null; } }
+      const get = (name) => (res.headers && typeof res.headers.get === 'function' ? res.headers.get(name) : null);
+      return { status: res.status, data, header: get };
+    } catch (err) {
+      if (err && err.name === 'UserInputError') throw err;
+      throw appError(timedOut || (err && err.name === 'AbortError') ? 'timeout' : 'network');
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Upload resumível (TUS) do Storage: blocos de 6 MB, progresso por bloco (`onProgress(0..1)`) e até
+   * `retries` novas tentativas por bloco (retoma do offset que o servidor confirmou). Etapa 7.
+   */
+  async function uploadResumable(bucket, objectPath, bytes, mime, { onProgress = null, retries = 3, chunkSize = TUS_CHUNK } = {}) {
+    const { token } = await identity();
+    const total = bytes.length;
+    const report = (n) => { try { if (onProgress) onProgress(total ? Math.min(1, n / total) : 1); } catch { /* ignora */ } };
+    const common = { apikey: anonKey, Authorization: `Bearer ${token}`, 'Tus-Resumable': '1.0.0' };
+    const metadata = [['bucketName', bucket], ['objectName', objectPath], ['contentType', mime], ['cacheControl', '3600']]
+      .map(([k, v]) => `${k} ${base64Utf8(v)}`).join(',');
+    const created = await rawRequest(`${base}/storage/v1/upload/resumable`, {
+      method: 'POST',
+      headers: { ...common, 'Upload-Length': String(total), 'Upload-Metadata': metadata, 'x-upsert': 'false' },
+    });
+    if (created.status !== 201) {
+      const code = errorCodeFrom(created.status, created.data);
+      throw appError(code === 'bad_response' || code === 'needs_migration' ? 'upload_failed' : code);
+    }
+    let loc = created.header('location') || created.header('Location') || '';
+    if (loc.startsWith('/')) loc = base + loc;
+    if (!loc.startsWith(`${base}/storage/v1/upload/resumable/`) || loc.length > 2048) throw appError('upload_failed');
+
+    async function serverOffset() {
+      const r = await rawRequest(loc, { method: 'HEAD', headers: { ...common } });
+      const o = Number(r.header('upload-offset'));
+      if (r.status >= 200 && r.status < 300 && Number.isSafeInteger(o) && o >= 0 && o <= total) return o;
+      throw appError('upload_failed');
+    }
+
+    let offset = 0;
+    report(0);
+    while (offset < total) {
+      const end = Math.min(total, offset + chunkSize);
+      let failures = 0;
+      for (;;) {
+        let fatal = null;
+        try {
+          const r = await rawRequest(loc, {
+            method: 'PATCH',
+            headers: { ...common, 'Upload-Offset': String(offset), 'Content-Type': 'application/offset+octet-stream' },
+            body: bytes.subarray(offset, end),
+            timeout: uploadTimeoutMs,
+          });
+          if (r.status === 204 || r.status === 200) {
+            const o = Number(r.header('upload-offset'));
+            offset = Number.isSafeInteger(o) && o > offset && o <= total ? o : end;
+            break;
+          }
+          if (r.status === 409) { offset = await serverOffset(); break; } // offset diferente: ressincroniza
+          if ([400, 401, 403, 404, 410, 413].includes(r.status)) {
+            const code = errorCodeFrom(r.status, r.data);
+            fatal = appError(code === 'bad_response' || code === 'needs_migration' ? 'upload_failed' : code);
+          } else {
+            throw appError('network');
+          }
+        } catch (err) {
+          if (!(err && (err.code === 'network' || err.code === 'timeout' || err.code === 'upload_failed'))) throw err;
+        }
+        if (fatal) throw fatal;
+        failures += 1;
+        if (failures > retries) throw appError('upload_interrupted');
+        await new Promise((r) => setTimeout(r, retryDelayMs * failures));
+        try { offset = await serverOffset(); } catch { /* tenta do mesmo ponto */ }
+        if (offset >= end) break;
+      }
+      report(offset);
+    }
+    return objectPath;
+  }
+
   async function removeObjects(bucket, paths) {
     if (!paths.length) return true;
     try {
@@ -248,7 +362,9 @@ function createRest({ fetchImpl, supabaseUrl, anonKey, getAccessToken, timeoutMs
     return null;
   }
 
-  return { base, identity, request, rpc, select, insert, update, remove, upload, removeObjects, sign, publicUrl, hasSchemaV3 };
+  return {
+    base, identity, request, rpc, select, insert, update, remove, upload, uploadResumable, removeObjects, sign, publicUrl, hasSchemaV3,
+  };
 }
 
-module.exports = { createRest, appError, isUuid, errorCodeFrom, isMissingSchema, MESSAGES, UUID_RE };
+module.exports = { createRest, appError, isUuid, errorCodeFrom, isMissingSchema, MESSAGES, UUID_RE, TUS_CHUNK };

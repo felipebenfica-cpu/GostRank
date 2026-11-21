@@ -122,6 +122,17 @@ function createPresenceService({
         const gid = payload && typeof payload.group_id === 'string' && isUuid(payload.group_id)
           ? payload.group_id.toLowerCase() : null;
         try { onPrivateEvent({ kind: 'servers', serverId: gid }); } catch { /* ignora */ }
+      } else if (event === 'voice_move') {
+        // Etapa 7: um ADM moveu você de sala. Só o banco escreve em me:<eu> (move_voice_member).
+        const pick = (a, b) => (payload && typeof payload[a] === 'string' ? payload[a] : (payload && typeof payload[b] === 'string' ? payload[b] : ''));
+        const serverId = pick('serverId', 'group_id');
+        const channelId = pick('channelId', 'channel_id');
+        const by = pick('by', 'by_user');
+        if (isUuid(serverId) && isUuid(channelId)) {
+          try {
+            onPrivateEvent({ kind: 'voice_move', serverId: serverId.toLowerCase(), channelId: channelId.toLowerCase(), by: isUuid(by) ? by.toLowerCase() : null });
+          } catch { /* ignora */ }
+        }
       }
     });
   }

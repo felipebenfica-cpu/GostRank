@@ -185,3 +185,29 @@ Os segredos do LiveKit ja cadastrados continuam valendo; nao precisa cadastrar d
 - Compatibilidade: as funcoes `social_*` do .exe anterior continuam respondendo, agora sobre o modelo novo;
   quem desligou "aparecer na busca" continua fora da busca de estranhos; as fotos antigas aparecem
   enquanto a pessoa nao enviar uma imagem nova.
+
+## 9. Aplicar o arquivo 0007 (LUMENEX) — passo unico
+
+Precisa da 0006 ja aplicada (se nao estiver, o arquivo para e avisa "Rode antes a 0006_discord.sql").
+Pode rodar de novo sem problema e nao apaga nada. As Edge Functions **nao** mudaram nesta etapa.
+
+1. No painel do Supabase, abra **SQL Editor** > **New query**.
+2. Abra `supabase/migrations/0007_lumenex.sql`, copie **tudo** e cole.
+3. Clique em **Run**. Tem que aparecer "Success. No rows returned".
+
+Conferir: em **Storage** > `avatars` > configuracoes do bucket, o limite fica em **40 MB**.
+Se o projeto tiver um limite global de upload menor (Project Settings > Storage > "Upload file size limit"),
+ajuste para pelo menos **40 MB** — o limite global vale por cima do limite do bucket.
+
+### O que o 0007 faz
+
+- Avatar e banner de ate **40 MB** (PNG, JPEG, GIF, WebP — inclusive animados), com miniatura leve para
+  listas e chat. Arquivos ficam em `<seu id>/avatar/` e `<seu id>/banner/`; so voce grava e apaga ali.
+  O avatar do app anterior (`<seu id>/<arquivo>`) continua valendo.
+- Recorte do avatar (ponto focal e zoom), posicao do banner, **8 molduras** e **8 efeitos** de perfil,
+  todos gratis. Mudam so pelas funcoes do banco, que validam cada valor (`update_profile_look`,
+  `reset_profile_look`, `set_profile_media`).
+- Tema da conta (claro, escuro, meia-noite) para o app lembrar em outro aparelho (`set_appearance_theme`).
+- Arrastar e soltar canais e categorias (`reorder_channels`) e mover pessoas entre salas de voz
+  (`move_voice_member`): **so dono e admin**, conferido no banco. O aviso de mudanca de sala vai so para
+  a pessoa movida, no canal privado dela.

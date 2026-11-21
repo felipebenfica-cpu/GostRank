@@ -79,15 +79,25 @@ test('social: pedido de amizade, aceitar, bloquear, abrir DM e perfil', async ()
   await assert.rejects(social.updateProfile({ displayName: '<b>' }), /nome de exibição/);
 });
 
-test('social: avatar vai para avatars/<meu id>/<uuid>.png e só imagem real', async () => {
+// WebP mínimo (miniatura) e PNG estático
+const WEBP = new Uint8Array([0x52, 0x49, 0x46, 0x46, 12, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x4c, 0, 0, 0, 0]);
+const THUMB = { mime: 'image/webp', data: WEBP.buffer };
+
+test('social: avatar (Etapa 7) sobe miniatura + original resumível em avatars/<meu id>/avatar/ e grava com set_profile_media', async () => {
   const { social, rest } = socialEnv();
   await social.refresh();
-  await social.uploadAvatar({ name: 'eu.png', mime: 'image/png', data: PNG.buffer });
-  const up = rest.calls.find((c) => c[0] === 'upload');
-  assert.equal(up[1], 'avatars');
-  assert.match(up[2], new RegExp(`^${ME}/[0-9a-f-]{36}\\.png$`));
-  assert.equal(rest.calls.filter((c) => c[0] === 'update').at(-1)[2].avatar_path, up[2]);
-  await assert.rejects(social.uploadAvatar({ name: 'x.png', mime: 'image/png', data: new Uint8Array([1, 2]) }), /Tipo de arquivo/);
+  await social.uploadAvatar({ name: 'eu.png', mime: 'image/png', data: PNG.buffer, thumb: THUMB, animated: true });
+  const thumb = rest.calls.find((c) => c[0] === 'upload');
+  const main = rest.calls.find((c) => c[0] === 'uploadResumable');
+  assert.equal(thumb[1], 'avatars');
+  assert.match(thumb[2], new RegExp(`^${ME}/avatar/[0-9a-f-]{36}\\.thumb\\.webp$`));
+  assert.match(main[2], new RegExp(`^${ME}/avatar/[0-9a-f-]{36}\\.png$`));
+  const rpc = rest.calls.find((c) => c[0] === 'rpc' && c[1] === 'set_profile_media');
+  // PNG estático: o "animated: true" da tela é ignorado — vale o que os bytes dizem
+  assert.deepEqual(rpc[2], { p_kind: 'avatar', p_path: main[2], p_thumb_path: thumb[2], p_animated: false });
+  assert.deepEqual(social.getUploads().avatar, { status: 'done', progress: 1, error: null });
+  await assert.rejects(social.uploadAvatar({ name: 'x.png', mime: 'image/png', data: new Uint8Array([1, 2]).buffer, thumb: THUMB }), /Formato não aceito/);
+  assert.equal(social.getUploads().avatar.status, 'error');
 });
 
 function serversEnv() {

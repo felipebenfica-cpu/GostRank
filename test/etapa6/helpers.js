@@ -37,6 +37,12 @@ function fakeRest(handlers = {}) {
     update: async (p, b, o) => { rec('update', p, b, o); return handlers.update ? handlers.update(p, b, o) : []; },
     remove: async (p) => { rec('remove', p); return handlers.remove ? handlers.remove(p) : true; },
     upload: async (bucket, path, bytes, mime) => { rec('upload', bucket, path, mime); return handlers.upload ? handlers.upload(bucket, path, bytes, mime) : path; },
+    uploadResumable: async (bucket, path, bytes, mime, opts = {}) => {
+      rec('uploadResumable', bucket, path, mime, bytes.length);
+      if (handlers.uploadResumable) return handlers.uploadResumable(bucket, path, bytes, mime, opts);
+      if (opts.onProgress) { opts.onProgress(0.5); opts.onProgress(1); }
+      return path;
+    },
     removeObjects: async (bucket, paths) => { rec('removeObjects', bucket, paths); return true; },
     sign: async (bucket, paths) => { rec('sign', bucket, paths); return new Map(paths.map((p) => [p, `https://proj.supabase.co/storage/v1/object/sign/${bucket}/${p}?token=t`])); },
     publicUrl: (bucket, p) => (p ? `https://proj.supabase.co/storage/v1/object/public/${bucket}/${p}` : null),

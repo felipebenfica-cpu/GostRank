@@ -1,4 +1,4 @@
-/* Ghost Rank - casca no modelo de uso do Discord: trilho de servidores, barras laterais (Home e servidor),
+/* LUMENEX - casca no modelo de uso do Discord: trilho de servidores, barras laterais (Home e servidor),
    página de amigos, DMs, cabeçalho, lista de membros, cartão de perfil, menus de contexto, menu de status,
    busca rápida (Ctrl+K), atalhos e diálogos de servidor/convite/canal.
    Mostra sempre o que vem em `view` (window.ghostRank). Só guarda estado efêmero de interface.
@@ -193,7 +193,7 @@
   // Ação que devolve view nova. Resolve com o texto do erro ou null.
   function act(name, arg, quiet) {
     if (!hasApi(name)) {
-      var msg = 'Isso ainda não está disponível nesta versão do Ghost Rank.';
+      var msg = 'Isso ainda não está disponível nesta versão do LUMENEX.';
       if (!quiet) U.toast(msg, 'error');
       return Promise.resolve(msg);
     }
@@ -206,7 +206,7 @@
 
   // Consulta que devolve dados (sem view). Resolve com o resultado bruto.
   function ask(name, arg) {
-    if (!hasApi(name)) return Promise.resolve({ ok: false, error: 'Isso ainda não está disponível nesta versão do Ghost Rank.' });
+    if (!hasApi(name)) return Promise.resolve({ ok: false, error: 'Isso ainda não está disponível nesta versão do LUMENEX.' });
     return opts.call(function () { return bridge[name](arg); }).then(function (res) {
       if (res && res.ok && res.view) opts.applyResult({ ok: true, view: res.view });
       return res || { ok: false, error: 'Algo deu errado. Tente de novo.' };
@@ -271,6 +271,11 @@
     var scale = typeof ap.fontScale === 'number' && ap.fontScale >= 80 && ap.fontScale <= 130 ? ap.fontScale : 100;
     root.style.setProperty('--font-scale', String(scale));
     root.dataset.compact = ap.compact ? 'true' : 'false';
+    // theme-boot.js lê isto na próxima abertura (sem flash de tema errado)
+    try {
+      if (window.localStorage.getItem('lumenex-theme') !== theme) window.localStorage.setItem('lumenex-theme', theme);
+      if (window.localStorage.getItem('lumenex-font-scale') !== String(scale)) window.localStorage.setItem('lumenex-font-scale', String(scale));
+    } catch (e) { /* sem armazenamento: só não lembra antes de carregar */ }
   }
 
   /* ---------- foco preservado ao refazer listas ---------- */
@@ -499,6 +504,8 @@
   $('sidebar-signin').addEventListener('click', function () { opts.openSignin(); });
 
   function renderServerNav(page) {
+    // durante um arrasto a lista não é refeita (refaz quando soltar)
+    if (ui.dnd && ui.dnd.isDragging()) { ui.dndStale = true; return; }
     var srv = view.server;
     $('server-name').textContent = srv.name;
     serverMenuBtn.setAttribute('aria-label', 'Menu do servidor ' + srv.name);
@@ -511,11 +518,13 @@
       if (loose.length) root.appendChild(channelList(loose, s, speaking, false));
       sortedCategories().forEach(function (cat) {
         var section = el('section', 'cat');
+        section.dataset.catId = cat.id;
         var collapsed = !!ui.collapsed[cat.id];
         var head = el('div', 'cat-head');
         var toggle = el('button', 'cat-toggle');
         toggle.type = 'button';
         toggle.dataset.key = 'cat-' + cat.id;
+        if (isAdmin()) { toggle.dataset.dnd = 'category'; toggle.dataset.dndId = cat.id; }
         toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
         toggle.appendChild(icon('chevronDown', 12, 'btn-icon cat-chevron'));
         toggle.appendChild(el('span', 'cat-name', cat.name));
@@ -553,11 +562,15 @@
     ul.setAttribute('role', 'list');
     chs.forEach(function (c) {
       var li = el('li', 'ch-li');
+      li.dataset.channelLi = c.id;
+      li.dataset.kind = c.kind;
+      li.dataset.categoryId = c.categoryId && categoryExists(c.categoryId) ? c.categoryId : '';
       var row = el('div', 'ch-row');
       var b = el('button', 'channel' + (c.kind === 'voice' ? ' channel-voice' : ''));
       b.type = 'button';
       b.dataset.key = 'ch-' + c.id;
       b.dataset.channelId = c.id;
+      if (isAdmin()) { b.dataset.dnd = 'channel'; b.dataset.dndId = c.id; }
       var current = s.channelId === c.id && currentPage() !== 'ranking';
       setCurrent(b, current);
       if (c.unread && !current && !c.muted) b.classList.add('is-unread');
@@ -597,13 +610,13 @@
         row.appendChild(gear);
       }
       li.appendChild(row);
-      if (people.length) li.appendChild(voiceMembers(people, speaking));
+      if (people.length) li.appendChild(voiceMembers(people, speaking, c.id));
       ul.appendChild(li);
     });
     return ul;
   }
 
-  function voiceMembers(people, speaking) {
+  function voiceMembers(people, speaking, channelId) {
     var ul = el('ul', 'vc-members');
     ul.setAttribute('role', 'list');
     people.forEach(function (p) {
@@ -611,7 +624,8 @@
       var b = el('button', 'vc-member');
       b.type = 'button';
       b.dataset.key = 'vcm-' + p.userId;
-      var u = userById(p.userId) || { id: p.userId, displayName: 'Fantasma' };
+      if (channelId && canMoveMember(p.userId)) { b.dataset.dnd = 'member'; b.dataset.dndId = p.userId; b.dataset.from = channelId; }
+      var u = userById(p.userId) || { id: p.userId, displayName: 'Jogador' };
       b.appendChild(U.avatarEl(u, 'xs', { speaking: !!speaking[p.userId] }));
       var name = displayName(p.userId, true);
       b.appendChild(el('span', 'vc-name', name));
@@ -630,6 +644,168 @@
       ul.appendChild(li);
     });
     return ul;
+  }
+
+  /* ---------- arrastar e soltar (só ADM) ---------- */
+
+  function categoryExists(id) {
+    return !!(view && view.server && list(view.server.categories).some(function (k) { return k.id === id; }));
+  }
+  function inVoiceHere(userId) {
+    if (!view || !view.server) return null;
+    var found = null;
+    list(view.server.channels).forEach(function (c) {
+      if (c.kind === 'voice' && voiceIn(c.id).some(function (p) { return p.userId === userId; })) found = c.id;
+    });
+    return found;
+  }
+  // ADM move qualquer um, menos o dono (o dono move todo mundo). Membro comum não move ninguém.
+  function canMoveMember(userId) {
+    if (!isAdmin()) return false;
+    if (isOwner()) return true;
+    var m = memberOf(userId);
+    return !(m && m.role === 'owner');
+  }
+
+  // Grupos na ordem exibida: sem categoria primeiro, depois cada categoria → { catId|null: [ids] }
+  function channelGroups() {
+    var chs = sortedChannels();
+    var groups = [{ catId: null, ids: chs.filter(function (c) { return !c.categoryId || !categoryExists(c.categoryId); }).map(function (c) { return c.id; }) }];
+    sortedCategories().forEach(function (cat) {
+      groups.push({ catId: cat.id, ids: chs.filter(function (c) { return c.categoryId === cat.id; }).map(function (c) { return c.id; }) });
+    });
+    return groups;
+  }
+  function layoutFromGroups(groups) {
+    var out = [];
+    var pos = 0;
+    groups.forEach(function (g) { g.ids.forEach(function (id) { out.push({ id: id, categoryId: g.catId, position: pos++ }); }); });
+    return out;
+  }
+  function currentLayout() { return layoutFromGroups(channelGroups()); }
+
+  // Leva o canal `id` para o grupo `catId`, antes/depois de `refId` (ou no começo/fim)
+  function moveChannel(id, catId, refId, position) {
+    var groups = channelGroups();
+    groups.forEach(function (g) { g.ids = g.ids.filter(function (x) { return x !== id; }); });
+    var g = groups.filter(function (x) { return x.catId === (catId || null); })[0];
+    if (!g) return;
+    g.ids = window.GhostDnd ? window.GhostDnd.moveInList(g.ids, id, refId, position) : g.ids.concat([id]);
+    saveLayout(layoutFromGroups(groups), null);
+  }
+  function moveCategory(id, refId, position) {
+    var ids = sortedCategories().map(function (k) { return k.id; });
+    var moved = window.GhostDnd ? window.GhostDnd.moveInList(ids, id, refId, position) : ids;
+    saveLayout(currentLayout(), moved.map(function (cid, i) { return { id: cid, position: i }; }));
+  }
+  function saveLayout(channels, categories) {
+    if (!view || !view.server) return;
+    var payload = { serverId: view.server.id, channels: channels };
+    if (categories) payload.categories = categories;
+    act('reorderChannels', payload);
+  }
+  function moveMember(userId, channelId) {
+    if (!view || !view.server) return;
+    var c = channelById(channelId);
+    var name = displayName(userId, true);
+    act('moveVoiceMember', { serverId: view.server.id, userId: userId, channelId: channelId }).then(function (err) {
+      if (!err) U.toast(name + ' foi movido para ' + (c ? c.name : 'outro canal') + '.');
+    });
+  }
+
+  function dndLabel(node) {
+    var t = node.dataset.dnd;
+    if (t === 'member') return displayName(node.dataset.dndId, true);
+    if (t === 'category') { var k = list(view.server && view.server.categories).filter(function (x) { return x.id === node.dataset.dndId; })[0]; return k ? k.name : ''; }
+    var c = channelById(node.dataset.dndId);
+    return c ? (c.kind === 'voice' ? '🔊 ' : '# ') + c.name : '';
+  }
+
+  function dndResolve(node, x, y) {
+    var hit = document.elementFromPoint(x, y);
+    if (!hit || !channelTree.contains(hit)) return null;
+    var type = node.dataset.dnd;
+    var id = node.dataset.dndId;
+    var li = hit.closest('li[data-channel-li]');
+    if (type === 'member') {
+      if (li && li.dataset.kind === 'voice' && li.dataset.channelLi !== node.dataset.from) return { el: li, position: 'inside', channelId: li.dataset.channelLi };
+      return null;
+    }
+    if (type === 'category') {
+      var sec = hit.closest('section.cat');
+      if (!sec || sec.dataset.catId === id) return null;
+      var r = sec.getBoundingClientRect();
+      return { el: sec, position: y < r.top + r.height / 2 ? 'before' : 'after', refId: sec.dataset.catId };
+    }
+    // canal
+    if (li && li.dataset.channelLi !== id) {
+      var row = li.querySelector('.ch-row') || li;
+      var rr = row.getBoundingClientRect();
+      return { el: li, position: y < rr.top + rr.height / 2 ? 'before' : 'after', refId: li.dataset.channelLi, catId: li.dataset.categoryId || null };
+    }
+    if (li) return null;
+    var head = hit.closest('.cat-head');
+    var section = hit.closest('section.cat');
+    if (head && section) return { el: head, position: 'inside', refId: null, catId: section.dataset.catId, at: 'start' };
+    if (section) return { el: section, position: 'end', refId: null, catId: section.dataset.catId, at: 'end' };
+    return null;
+  }
+
+  function dndDrop(node, t) {
+    var type = node.dataset.dnd;
+    var id = node.dataset.dndId;
+    if (type === 'member') { moveMember(id, t.channelId); return; }
+    if (type === 'category') { moveCategory(id, t.refId, t.position); return; }
+    if (t.refId) moveChannel(id, t.catId, t.refId, t.position);
+    else moveChannel(id, t.catId, null, t.at === 'start' ? 'start' : 'end');
+  }
+
+  function setupDnd() {
+    if (!window.GhostDnd || ui.dnd) return;
+    ui.dnd = window.GhostDnd.attach(channelTree, {
+      selector: '[data-dnd]',
+      enabled: function () { return isAdmin() && sel().mode === 'server' && !!view.server; },
+      canDrag: function (node) { return node.dataset.dnd !== 'member' || canMoveMember(node.dataset.dndId); },
+      label: dndLabel,
+      resolve: dndResolve,
+      onDrop: dndDrop,
+      onEnd: function () { if (ui.dndStale) { ui.dndStale = false; setTimeout(function () { opts.rerender(); }, 0); } },
+      scroller: channelTree.closest('.sidebar-scroll') || channelTree.parentNode
+    });
+  }
+
+  // Teclado (alternativa ao arrasto, só no menu de contexto do ADM): "Mover para…"
+  function channelMoveTargets(c) {
+    var items = [];
+    channelGroups().forEach(function (g) {
+      var cat = g.catId ? list(view.server.categories).filter(function (k) { return k.id === g.catId; })[0] : null;
+      var gname = cat ? cat.name : 'Sem categoria';
+      var others = g.ids.filter(function (x) { return x !== c.id; });
+      items.push({ label: 'Começo de ' + gname, action: function () { moveChannel(c.id, g.catId, null, 'start'); } });
+      others.forEach(function (oid) {
+        var oc = channelById(oid);
+        if (oc) items.push({ label: 'Depois de ' + (oc.kind === 'voice' ? '🔊 ' : '#') + oc.name + ' (' + gname + ')', action: function () { moveChannel(c.id, g.catId, oid, 'after'); } });
+      });
+    });
+    return items;
+  }
+  function categoryMoveTargets(cat) {
+    var cats = sortedCategories().filter(function (k) { return k.id !== cat.id; });
+    var items = [];
+    if (cats.length) items.push({ label: 'Para o topo', action: function () { moveCategory(cat.id, cats[0].id, 'before'); } });
+    cats.forEach(function (k) { items.push({ label: 'Depois de ' + k.name, action: function () { moveCategory(cat.id, k.id, 'after'); } }); });
+    return items;
+  }
+  function memberMoveTargets(userId) {
+    var from = inVoiceHere(userId);
+    return list(view.server && view.server.channels).filter(function (c) { return c.kind === 'voice' && c.id !== from; })
+      .map(function (c) { return { label: '🔊 ' + c.name, action: function () { moveMember(userId, c.id); } }; });
+  }
+  function openSubmenu(items) {
+    if (!items.length) { U.toast('Não há outro lugar para mover.'); return; }
+    var a = document.activeElement;
+    var p = a && a.getBoundingClientRect ? { x: a.getBoundingClientRect().left + 24, y: a.getBoundingClientRect().bottom } : { x: 120, y: 120 };
+    setTimeout(function () { U.openContextMenu(items, p.x, p.y, a); }, 0);
   }
 
   function openChannel(c) {
@@ -716,9 +892,9 @@
       ghost.setAttribute('aria-hidden', 'true');
       ghost.appendChild(U.ghostSvg(20));
       slot.appendChild(ghost);
-      if (status === 'unconfigured') { nameText = 'Ghost Rank'; sub = 'Contas ainda não configuradas'; }
+      if (status === 'unconfigured') { nameText = 'LUMENEX'; sub = 'Contas ainda não configuradas'; }
       else if (status === 'signed_out') { nameText = 'Sem conta'; sub = 'Modo local'; }
-      else { nameText = 'Ghost Rank'; sub = ''; }
+      else { nameText = 'LUMENEX'; sub = ''; }
       userChip.setAttribute('aria-label', nameText + (sub ? ', ' + sub : ''));
       userChip.disabled = status !== 'signed_out';
     }
@@ -820,7 +996,7 @@
     var ch = channelById(s.channelId);
     if (page === 'friends') t = 'Amigos';
     else if (page === 'mmr') t = 'Meu MMR';
-    else if (page === 'ranking') t = 'Ranking dos fantasmas';
+    else if (page === 'ranking') t = 'Ranking do servidor';
     else if (page === 'chat' || page === 'voice') { t = ch ? ch.name : ''; tp = ch && ch.topic ? ch.topic : ''; }
     else if (page === 'dm') {
       var dm = dmById(s.dmId);
@@ -828,7 +1004,7 @@
       t = U.nameOf(u);
       tp = u.customStatus || '';
     } else if (page === 'empty') {
-      t = view.server ? view.server.name : 'Ghost Rank';
+      t = view.server ? view.server.name : 'LUMENEX';
     }
     title.textContent = t;
     topic.textContent = tp;
@@ -854,7 +1030,7 @@
     var inCall = page === 'dm' && dmCallActive(s.dmId);
     btnCall.disabled = inCall;
     btnVideo.disabled = inCall;
-    document.title = t ? t + ' · Ghost Rank' : 'Ghost Rank';
+    document.title = t ? t + ' · LUMENEX' : 'LUMENEX';
   }
 
   function renderFriendTabs() {
@@ -1044,7 +1220,7 @@
   var TAB_EMPTY = {
     online: 'Nenhum amigo online agora. O fantasminha está de olho — chame alguém para jogar!',
     all: 'O fantasminha está esperando amigos. Use “Adicionar amigo” para encontrar pessoas pelo nome de usuário.',
-    pending: 'Não há pedidos de amizade pendentes. Aqui está um fantasma para te fazer companhia.',
+    pending: 'Não há pedidos de amizade pendentes. Quando alguém te chamar, o pedido aparece aqui.',
     blocked: 'Você não bloqueou ninguém.'
   };
 
@@ -1435,6 +1611,25 @@
     var card = el('div', panel ? 'pcard pcard-panel' : 'pcard');
     var banner = el('div', 'pcard-banner');
     banner.dataset.tone = String(U.toneOf(u));
+    var bannerUrl = U.safeImageUrl(u.bannerUrl);
+    if (bannerUrl) {
+      banner.classList.add('has-image');
+      var bnode = null;
+      if (window.GhostLook && typeof window.GhostLook.banner === 'function') {
+        try { bnode = window.GhostLook.banner(u, { height: 104 }); } catch (e) { bnode = null; }
+      }
+      if (!bnode) {
+        bnode = document.createElement('img');
+        bnode.alt = '';
+        bnode.decoding = 'async';
+        bnode.className = 'pcard-banner-img';
+        bnode.src = bannerUrl;
+        var pos = typeof u.bannerPos === 'number' ? Math.max(0, Math.min(100, u.bannerPos)) : 50;
+        bnode.style.objectPosition = '50% ' + pos + '%';
+      }
+      bnode.classList.add('pcard-banner-media');
+      banner.appendChild(bnode);
+    }
     card.appendChild(banner);
     var head = el('div', 'pcard-head');
     head.appendChild(U.avatarEl(u, 'lg', { status: presenceOf(u.id) }));
@@ -1562,15 +1757,30 @@
     var top = Math.min(r.top, window.innerHeight - pr.height - 8);
     pop.style.left = Math.round(left) + 'px';
     pop.style.top = Math.round(Math.max(8, top)) + 'px';
-    profilePop = { node: pop, userId: userId, anchor: anchor || null };
+    profilePop = { node: pop, userId: userId, anchor: anchor || null, effect: null, effectKey: null };
+    mountProfileEffect(u);
     var first = pop.querySelector('.pcard-actions button:not(:disabled)') || close;
     first.focus();
+  }
+
+  // Efeito do perfil (GhostLook): toca dentro do cartão aberto, por baixo dos botões. Fica preso à
+  // janelinha (não ao cartão), então atualizar a view não faz o efeito recomeçar.
+  function mountProfileEffect(u) {
+    if (!profilePop) return;
+    var key = u && u.effect ? u.id + ':' + u.effect : null;
+    if (key === profilePop.effectKey) return;
+    if (profilePop.effect) { try { profilePop.effect.destroy(); } catch (e) { /* ignora */ } }
+    profilePop.effect = null;
+    profilePop.effectKey = key;
+    if (!key || !window.GhostLook || typeof window.GhostLook.mountCardEffect !== 'function') return;
+    try { profilePop.effect = window.GhostLook.mountCardEffect(profilePop.node, u); } catch (e) { profilePop.effect = null; }
   }
 
   function closeProfile(restore) {
     if (!profilePop) return;
     var p = profilePop;
     profilePop = null;
+    if (p.effect) { try { p.effect.destroy(); } catch (e) { /* ignora */ } }
     if (p.node.parentNode) p.node.parentNode.removeChild(p.node);
     if (restore && p.anchor && document.contains(p.anchor)) { try { p.anchor.focus(); } catch (e) { /* ignora */ } }
   }
@@ -1585,6 +1795,7 @@
     var old = p.node.querySelector('.pcard');
     var fresh = profileCard(u, member, false);
     p.node.replaceChild(fresh, old);
+    mountProfileEffect(u);
     if (hadFocus) {
       var first = p.node.querySelector('.pcard-actions button:not(:disabled)') || p.node.querySelector('.pcard-close');
       if (first) first.focus();
@@ -1634,6 +1845,7 @@
         else items.push({ label: 'Tornar admin', icon: 'shield', action: function () { act('setMemberRole', { serverId: srv.id, userId: userId, role: 'admin' }); } });
         items.push({ label: 'Transferir posse do servidor', icon: 'crown', action: function () { confirmTransfer(srv, userId, name); } });
       }
+      if (inVoiceHere(userId) && canMoveMember(userId)) items.push({ label: 'Mover para outro canal de voz…', icon: 'speaker', action: function () { openSubmenu(memberMoveTargets(userId)); } });
       items.push({ label: 'Expulsar ' + name, danger: true, action: function () { confirmKick(srv, userId, name); } });
       items.push({ label: 'Banir ' + name, danger: true, action: function () { confirmBan(srv, userId, name); } });
     }
@@ -1757,6 +1969,7 @@
         U.prompt({ title: 'Renomear categoria', label: 'Nome da categoria', value: cat.name, maxLength: 32,
           submit: function (v) { return act('updateCategory', { categoryId: cat.id, name: v }, true); } });
       } },
+      { label: 'Mover categoria…', icon: 'folder', action: function () { openSubmenu(categoryMoveTargets(cat)); } },
       { separator: true },
       { label: 'Apagar categoria', icon: 'trash', danger: true, action: function () {
         U.confirm({ title: 'Apagar a categoria ' + cat.name + '?', body: 'Os canais dela não são apagados: ficam sem categoria no topo da lista.', confirmLabel: 'Apagar categoria', danger: true }).then(function (ok) {
@@ -1795,6 +2008,7 @@
     if (isAdmin()) {
       items.push({ separator: true });
       items.push({ label: 'Editar canal', icon: 'gear', action: function () { openChannelDialog({ mode: 'edit', channel: c }); } });
+      items.push({ label: 'Mover para…', icon: 'folder', action: function () { openSubmenu(channelMoveTargets(c)); } });
       items.push({ label: 'Apagar canal', icon: 'trash', danger: true, action: function () { confirmDeleteChannel(c); } });
     }
     items.push({ separator: true });
@@ -1842,7 +2056,7 @@
 
   (function buildSwatches() {
     var row = $('create-server-colors');
-    var names = ['Verde-fantasma', 'Violeta', 'Azul', 'Âmbar', 'Verde', 'Rosa', 'Ciano', 'Laranja'];
+    var names = ['Verde-água', 'Violeta', 'Azul', 'Âmbar', 'Verde', 'Rosa', 'Ciano', 'Laranja'];
     names.forEach(function (n, i) {
       var label = el('label', 'swatch');
       label.dataset.tone = String(i);
@@ -1882,7 +2096,7 @@
   function openServerDialog(which, code) {
     serverDlgReturn = document.activeElement;
     var m = me();
-    createName.value = ('Servidor de ' + (m ? U.nameOf(m) : 'fantasma')).slice(0, 32);
+    createName.value = ('Servidor de ' + (m ? U.nameOf(m) : 'LUMENEX')).slice(0, 32);
     var radios = dlgServer.querySelectorAll('input[name="server-color"]');
     var pick = Math.floor(Math.random() * 8);
     Array.prototype.forEach.call(radios, function (r, i) { r.checked = i === pick; });
@@ -2264,7 +2478,7 @@
 
   function joinVoice(target, withVideo) {
     var gv = voiceApi();
-    if (!mods.voice || !gv) { U.toast('A voz não carregou nesta versão do Ghost Rank.', 'error'); return; }
+    if (!mods.voice || !gv) { U.toast('A voz não carregou nesta versão do LUMENEX.', 'error'); return; }
     if (view.legacy) target = undefined;
     try {
       var p = gv.join(target);
@@ -2429,6 +2643,7 @@
     app.dataset.auth = signedIn() ? 'in' : 'out';
     if (sel().mode === 'home' && signedIn()) ui.lastHomeTab = sel().tab === 'mmr' ? 'mmr' : 'friends';
     applyAppearance();
+    followVoiceMove();
     renderRail();
     hideRailTip();
     renderSidebar(page);
@@ -2443,6 +2658,21 @@
     if (dlgQuick.open) renderQuick();
     if (dlgInvite.open && inviteServerId && !serverById(inviteServerId) && !view.legacy) dlgInvite.close();
     if (signedIn()) mentionSound();
+  }
+
+  // Um ADM moveu você para outro canal de voz (view.voiceMove com nonce novo). A voz troca de sala
+  // sozinha (voice.js); aqui a tela acompanha se você estava vendo a chamada.
+  function followVoiceMove() {
+    var vm = view && view.voiceMove;
+    var nonce = vm && vm.nonce != null ? String(vm.nonce) : null;
+    if (ui.lastVoiceMove === undefined) { ui.lastVoiceMove = nonce; return; }
+    if (!nonce || nonce === ui.lastVoiceMove) return;
+    ui.lastVoiceMove = nonce;
+    var s = sel();
+    var cur = s.channelId ? channelById(s.channelId) : null;
+    if (s.mode === 'server' && s.serverId === vm.serverId && cur && cur.kind === 'voice' && s.channelId !== vm.channelId && hasApi('select')) {
+      select({ mode: 'server', serverId: vm.serverId, channelId: vm.channelId });
+    }
   }
 
   /* Dica flutuante do trilho (hover e foco por teclado). Fica fora do trilho, que rola. */
@@ -2490,6 +2720,7 @@
     bridge = o.bridge;
     initModules();
     initRailTips();
+    setupDnd();
     if (window.ghostRank && typeof window.ghostRank.onNotificationClick === 'function') {
       try { window.ghostRank.onNotificationClick(function () { focusTitle(); }); } catch (e) { /* opcional */ }
     }
