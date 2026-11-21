@@ -22,6 +22,8 @@ function replaceOnce(text, from, to) {
 function build() {
   let html = fs.readFileSync(src, 'utf8');
   html = replaceOnce(html, '  <title>Ghost Rank</title>\n', `  <meta http-equiv="Content-Security-Policy" content="${CSP}">\n  <title>Ghost Rank (prévia)</title>\n`);
+  html = replaceOnce(html, '<h2 id="dlg-signin-title" class="dialog-title">Entrar</h2>',
+    '<h2 id="dlg-signin-title" class="dialog-title">Entrar na demonstração</h2><p class="help">Use um e-mail fictício e uma senha de teste. Para acessar sua conta, abra o site ou o aplicativo Windows.</p>');
   html = replaceOnce(html, 'href="styles.css"', 'href="../src/renderer/styles.css"');
   html = replaceOnce(html, 'href="voice.css"', 'href="../src/renderer/voice.css"');
   // LiveKit de verdade não roda na prévia: entra um falso local (preview/fake-livekit.js), sem rede.

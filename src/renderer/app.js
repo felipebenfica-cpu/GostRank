@@ -740,7 +740,6 @@
     if (!password) return failField(d, d.pw, 'Informe a sua senha.');
     setBusy(d, true);
     call(function () { return bridge.signIn({ email: email, password: password }); }).then(function (res) {
-      d.pw.value = '';
       setBusy(d, false);
       var err = applyResult(res);
       if (err) {

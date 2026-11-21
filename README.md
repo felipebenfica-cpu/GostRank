@@ -16,7 +16,7 @@ Para abrir as DevTools durante o desenvolvimento: `GHOST_RANK_DEV=1 npm start` (
 
 ## Atualizar o site e o banco
 
-O site `ghosttouch.netlify.app` usa a branch `etapa-2-grupo-voz`. Para atualizar uma instalação que já usa os grupos, aplique a migração antes de publicar o código.
+O site `ghosttouch.netlify.app` usa a branch `etapa-2-grupo-voz`. O login e os grupos existentes funcionam com a migração 0002. A migração 0003 ativa os convites permanentes, as fotos e as amizades.
 
 1. Abra o projeto `jdipignyikikagjvynve` no Supabase. Em **SQL Editor**, execute o arquivo [0003_social.sql](supabase/migrations/0003_social.sql). Em um banco novo, execute primeiro [0001_perfis.sql](supabase/migrations/0001_perfis.sql) e [0002_grupo.sql](supabase/migrations/0002_grupo.sql), nessa ordem.
 2. Confira se `config.public.json` aponta para o mesmo projeto e contém a chave pública de cliente. As contas da versão web usam o login por e-mail do Supabase.

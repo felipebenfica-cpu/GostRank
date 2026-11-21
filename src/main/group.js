@@ -113,6 +113,9 @@ function createSupabaseRest({ fetchImpl, supabaseUrl, anonKey, getAccessToken, t
 
   async function rpc(name, args, token) {
     const { status, data } = await call(`/rest/v1/rpc/${name}`, { method: 'POST', token, body: args || {} });
+    if (data?.code === 'PGRST202' && name.startsWith('social_')) {
+      throw new UserInputError('Os recursos sociais aguardam a atualização do banco do GostRank.');
+    }
     if (!ok(status)) throw fail(status, data);
     return data;
   }
@@ -179,6 +182,10 @@ function createGroupClient({
 
   async function getList(pathAndQuery, token) {
     const { status, data } = await call(pathAndQuery, { token });
+    // Projetos anteriores à migração social ainda não possuem a coluna photo.
+    if (status === 400 && data?.code === '42703' && pathAndQuery.includes(',photo')) {
+      return getList(pathAndQuery.replace(',photo', ''), token);
+    }
     if (!ok(status)) throw fail(status, data);
     if (!Array.isArray(data)) throw groupError('bad_response');
     return data;
