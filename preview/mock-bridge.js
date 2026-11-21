@@ -200,7 +200,7 @@
     if (auth.status !== 'signed_in' || !grp) return { messages: [], status: 'idle' };
     return {
       messages: chatMessages.map(function (m) {
-        return { id: m.id, userId: m.userId, displayName: m.userId === ME ? (auth.displayName || m.displayName) : m.displayName, body: m.body, createdAt: m.createdAt, mine: m.userId === ME };
+        return { id: m.id, userId: m.userId, displayName: m.userId === ME ? (auth.displayName || m.displayName) : m.displayName, body: m.body, createdAt: m.createdAt, editedAt: m.editedAt || null, mine: m.userId === ME };
       }),
       status: chatStatus
     };
@@ -510,6 +510,29 @@
         }
         return ok();
       }, 250);
+    },
+
+    editMessage: function (id, body) {
+      return delay(function () {
+        var e = needSignedIn(); if (e) return e;
+        var message = grp && chatMessages.find(function (m) { return m.id === id && m.userId === ME; });
+        if (!message) return fail('Essa mensagem não está disponível para alteração.');
+        var text = typeof body === 'string' ? body.trim() : '';
+        if (!text || Array.from(text).length > 1000 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)) return fail('Escreva uma mensagem válida de até 1000 caracteres.');
+        message.body = text;
+        message.editedAt = Date.now();
+        return ok();
+      }, 200);
+    },
+
+    deleteMessage: function (id) {
+      return delay(function () {
+        var e = needSignedIn(); if (e) return e;
+        var index = grp ? chatMessages.findIndex(function (m) { return m.id === id && m.userId === ME; }) : -1;
+        if (index < 0) return fail('Essa mensagem não está disponível para alteração.');
+        chatMessages.splice(index, 1);
+        return ok();
+      }, 200);
     },
 
     voiceToken: function () {

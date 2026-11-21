@@ -28,6 +28,7 @@ function build() {
   html = replaceOnce(html, 'href="voice.css"', 'href="../src/renderer/voice.css"');
   // LiveKit de verdade não roda na prévia: entra um falso local (preview/fake-livekit.js), sem rede.
   html = replaceOnce(html, '  <script src="vendor/livekit-client.umd.js"></script>', '  <script src="fake-livekit.js"></script>');
+  html = replaceOnce(html, 'src="community.js"', 'src="../src/renderer/community.js"');
   html = replaceOnce(html, '  <script src="voice.js"></script>', '  <script src="../src/renderer/voice.js"></script>');
   html = replaceOnce(html, '  <script src="app.js"></script>', '  <script src="mock-bridge.js"></script>\n  <script src="../src/renderer/app.js"></script>');
   return html;

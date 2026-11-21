@@ -25,6 +25,8 @@ const CHANNELS = Object.freeze({
   groupRemove: 'gr:group:remove',
   groupRefresh: 'gr:group:refresh',
   chatSend: 'gr:chat:send',
+  chatEdit: 'gr:chat:edit',
+  chatDelete: 'gr:chat:delete',
   voiceToken: 'gr:voice:token',
   voiceListSources: 'gr:voice:listSources',
   voicePickSource: 'gr:voice:pickSource',
@@ -166,6 +168,17 @@ function validateSocialPayload(p) {
       || Reflect.ownKeys(p).some((k) => k !== 'action' && k !== 'value')) return null;
   const { action, value } = p;
   switch (action) {
+    case 'dmRead':
+    case 'dmSend': {
+      if (!isPlainObject(value) || !validateUserIdPayload({ userId: value.peer })) return null;
+      if (action === 'dmRead') {
+        const before = value.before ?? null;
+        return before === null || (Number.isSafeInteger(before) && before > 0)
+          ? { action, value: { peer: value.peer, before } } : null;
+      }
+      const body = validateChatPayload({ body: value.body });
+      return body ? { action, value: { peer: value.peer, body: body.body } } : null;
+    }
     case 'list':
       return value == null ? { action } : null;
     case 'search': {
@@ -197,6 +210,18 @@ function validateChatPayload(p) {
   const len = [...body].length;
   if (len < 1 || len > CHAT_BODY_MAX) return null;
   return { body };
+}
+
+function validateEditMessagePayload(p) {
+  if (!checkObject(p, ['id', 'body'], [], { body: CHAT_BODY_RAW_MAX })) return null;
+  if (!Number.isSafeInteger(p.id) || p.id <= 0) return null;
+  const message = validateChatPayload({ body: p.body });
+  return message ? { id: p.id, body: message.body } : null;
+}
+
+function validateDeleteMessagePayload(p) {
+  if (!checkObject(p, ['id']) || !Number.isSafeInteger(p.id) || p.id <= 0) return null;
+  return { id: p.id };
 }
 
 function validatePickSourcePayload(p) {
@@ -264,6 +289,10 @@ function buildHandlers(controller, {
     if (!group) throw new UserInputError(GROUP_UNAVAILABLE_ERROR);
     return fn(d);
   };
+  const viaChat = (fn) => viaGroup(async (data) => {
+    if (!chatFeed || !group.hasGroup()) throw new UserInputError('Você não está em um grupo.');
+    await fn(data);
+  });
   const viaVoice = (fn) => async (d) => {
     needSignedIn();
     if (!group || !group.hasGroup()) throw new UserInputError('Entre em um grupo para usar a sala de voz.');
@@ -300,10 +329,9 @@ function buildHandlers(controller, {
     }), { raw: true }),
     [CHANNELS.groupRemove]: wrapHandler(validateUserIdPayload, viaGroup((d) => group.remove(d.userId))),
     [CHANNELS.groupRefresh]: wrapHandler(validateNoArgsPayload, viaGroup(() => group.refresh())),
-    [CHANNELS.chatSend]: wrapHandler(validateChatPayload, viaGroup(async (d) => {
-      if (!chatFeed || !group.hasGroup()) throw new UserInputError('Você não está em um grupo.');
-      await chatFeed.send(d.body);
-    })),
+    [CHANNELS.chatSend]: wrapHandler(validateChatPayload, viaChat((d) => chatFeed.send(d.body))),
+    [CHANNELS.chatEdit]: wrapHandler(validateEditMessagePayload, viaChat((d) => chatFeed.edit(d.id, d.body))),
+    [CHANNELS.chatDelete]: wrapHandler(validateDeleteMessagePayload, viaChat((d) => chatFeed.remove(d.id))),
     [CHANNELS.voiceToken]: wrapHandler(validateNoArgsPayload, viaVoice(async () => {
       if (!voice) throw new UserInputError(VOICE_UNAVAILABLE_ERROR);
       const r = await voice.getToken();
@@ -353,6 +381,8 @@ module.exports = {
   validateUserIdPayload,
   validateSocialPayload,
   validateChatPayload,
+  validateEditMessagePayload,
+  validateDeleteMessagePayload,
   validatePickSourcePayload,
   validateCredentialsPayload,
   validateRecoverPayload,

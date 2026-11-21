@@ -23,7 +23,15 @@ O site `ghosttouch.netlify.app` usa a branch `etapa-2-grupo-voz`. O login e os g
 3. Execute `npm test` e `node scripts/build-netlify.js`. O Netlify publica a pasta `dist/` com a configuração de [netlify.toml](netlify.toml). A integração com GitHub publica as mudanças incorporadas à branch de produção.
 4. Confira o fluxo com duas contas confirmadas em navegadores distintos. Crie um grupo com a primeira, copie o convite e entre com a segunda. Pesquise o apelido da outra conta, envie o pedido de amizade e aceite pelo outro navegador. Troque a foto do perfil e, na conta do dono, a foto do grupo. Reabra as telas nas duas contas para conferir as fotos.
 
+A migração [0004_chat_mensagens.sql](supabase/migrations/0004_chat_mensagens.sql) habilita edição das próprias mensagens e registra o horário da mudança. Depois da 0003, a [0005_mensagens_diretas.sql](supabase/migrations/0005_mensagens_diretas.sql) permite que amigos confirmados conversem em **Amigos → Mensagem**. A busca no chat de grupo abrange as últimas 200 mensagens carregadas. Tema, tamanho da fonte e movimento são preferências do dispositivo em **Minha conta**.
+
 A página `preview/index.html` usa uma simulação local para desenvolver a interface. Os convites e as contas dessa prévia existem só na demonstração. Para compartilhar o grupo com outra pessoa, ambos devem entrar em uma versão conectada ao mesmo projeto Supabase.
+
+## Conferir a publicação e reverter uma versão
+
+O merge em `etapa-2-grupo-voz` inicia duas entregas independentes. No Netlify, abra o deploy de produção de **ghosttouch** e confira o commit publicado. No GitHub Actions, acompanhe **Gerar .exe para Windows** para o mesmo commit. O executável portátil fica no [release da branch](https://github.com/felipebenfica-cpu/GostRank/releases/tag/teste-etapa-2-grupo-voz). O site e o executável podem terminar em horários diferentes.
+
+Se precisar voltar à versão anterior do aplicativo, abra um PR que reverta o commit da atualização na branch de produção. Para um commit de merge, use `git revert -m 1 <sha-do-merge>` em uma branch nova. Teste o cliente anterior com a versão atual do banco antes de incorporar a reversão. Preserve as tabelas, fotos, pedidos de amizade e convites existentes. Se uma função SQL também precisar de correção, publique uma nova migração que preserve as assinaturas usadas pelos clientes web e Windows já distribuídos. Após o merge, confira os dois resultados de publicação novamente.
 
 ## Estrutura
 

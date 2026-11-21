@@ -6,6 +6,7 @@ const { createSupabaseRest, isUuid } = require('./group');
 const PAGE_SIZE = 12;
 const STATES = ['self', 'none', 'incoming', 'outgoing', 'friend'];
 const MESSAGES = {
+  invalid_message: 'Informe uma mensagem de até 1.000 caracteres.',
   invalid_search: 'Digite de 2 a 64 caracteres para buscar um jogador.',
   invalid_user: 'Essa solicitação não está disponível. Atualize a lista de amigos.',
   invalid_photo: 'Escolha uma foto JPEG de até 64 KiB.',
@@ -36,6 +37,17 @@ function createSocialClient(options) {
   return async function social(action, value) {
     const { token } = await rest.identity();
     switch (action) {
+      case 'dmRead':
+      case 'dmSend': {
+        if (!value || !isUuid(value.peer)) throw rest.errorFor('invalid_user');
+        const before = value.before ?? null;
+        if (before !== null && (!Number.isSafeInteger(before) || before < 1)) throw rest.errorFor('invalid_message');
+        const body = action === 'dmSend' && typeof value.body === 'string' ? value.body.trim() : null;
+        if (action === 'dmSend' && (!body || [...body].length > 1000 || before !== null)) throw rest.errorFor('invalid_message');
+        const rows = await rest.rpc('social_dm', { p_peer: value.peer, p_body: body, p_before: before }, token);
+        if (!Array.isArray(rows) || rows.length > 50) throw rest.errorFor('bad_response');
+        return { rows };
+      }
       case 'list':
         return people(null, token);
       case 'search': {

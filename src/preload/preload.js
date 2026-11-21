@@ -23,6 +23,8 @@ contextBridge.exposeInMainWorld('ghostRank', {
   removeMember: (userId) => ipcRenderer.invoke('gr:group:remove', { userId }),
   refreshGroup: () => ipcRenderer.invoke('gr:group:refresh', {}),
   sendMessage: (body) => ipcRenderer.invoke('gr:chat:send', { body }),
+  editMessage: (id, body) => ipcRenderer.invoke('gr:chat:edit', { id, body }),
+  deleteMessage: (id) => ipcRenderer.invoke('gr:chat:delete', { id }),
   voiceToken: () => ipcRenderer.invoke('gr:voice:token', {}),
   listScreenSources: () => ipcRenderer.invoke('gr:voice:listSources', {}),
   pickScreenSource: (sourceId) => ipcRenderer.invoke('gr:voice:pickSource', { sourceId }),
