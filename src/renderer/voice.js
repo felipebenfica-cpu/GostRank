@@ -109,10 +109,15 @@
     return h % 6;
   }
 
+  var paintPhoto = null;
+
   function avatar(name, id, small) {
     var a = el('span', 'vc-avatar vc-hue-' + hueOf(id) + (small ? ' vc-avatar-sm' : ''));
     a.setAttribute('aria-hidden', 'true');
     a.appendChild(el('span', 'vc-avatar-text', initials(name)));
+    var members = lastView && lastView.group && lastView.group.members;
+    var member = Array.isArray(members) && members.find(function (m) { return m.userId === id; });
+    if (member && paintPhoto) paintPhoto(a, member.photo);
     return a;
   }
 
@@ -1736,6 +1741,7 @@
   function init(opts) {
     opts = opts || {};
     bridge = opts.bridge || null;
+    paintPhoto = typeof opts.paintPhoto === 'function' ? opts.paintPhoto : null;
     onState = typeof opts.onState === 'function' ? opts.onState : null;
     LK = window.LivekitClient || null;
     els = opts.els || {};

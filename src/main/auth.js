@@ -1,6 +1,6 @@
 'use strict';
 
-const { normalizeSupabaseUrl, isValidAnonKey } = require('./config');
+const { normalizeSupabaseUrl, isValidAnonKey } = require('../core/supabaseConfig');
 
 const MESSAGES = Object.freeze({
   invalid_credentials: 'E-mail ou senha incorretos.',
@@ -32,7 +32,7 @@ function userIdFromToken(token) {
   const parts = token.split('.');
   if (parts.length !== 3) return null;
   try {
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
     const sub = payload && payload.sub;
     return typeof sub === 'string' && UUID_RE.test(sub) ? sub.toLowerCase() : null;
   } catch {

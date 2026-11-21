@@ -132,7 +132,6 @@
   var SOMBRA = '33333333-3333-4333-8333-333333333333';
   var ECO = '44444444-4444-4444-8444-444444444444';
   var INVITE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{10}$/;
-  var INVITE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   var DEMO_INVITE = 'FANTASMA23';
   var MIN = 60000;
 
@@ -229,13 +228,6 @@
     return auth.status === 'signed_in' ? null : fail('Entre na sua conta para usar o grupo.');
   }
 
-  function randomCode() {
-    var out = '';
-    for (var i = 0; i < 10; i++) out += INVITE_ALPHABET.charAt(Math.floor(Math.random() * INVITE_ALPHABET.length));
-    return out;
-  }
-
-  // Miniaturas desenhadas localmente (data:image/jpeg); a última é propositalmente inválida
   function thumb(label, hue) {
     var c = document.createElement('canvas');
     c.width = 320;
@@ -446,7 +438,7 @@
         if (grp) return fail('Você já está em um grupo. Saia dele antes de entrar em outro.');
         var c = String(code == null ? '' : code).trim().toUpperCase();
         if (!INVITE_RE.test(c)) return fail('O código tem 10 letras e números (sem I, L, O, 0 e 1), como K7M2QX9PTA.');
-        if (c !== DEMO_INVITE) return fail('Esse convite não vale: o código está errado, expirou ou já foi usado.');
+        if (c !== DEMO_INVITE) return fail('Código não encontrado nesta demonstração.');
         grp = { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', name: 'Os Assombrados', ownerId: LUA, others: friends() };
         grp.others[0].isOwner = true;
         chatMessages = seedChat();
@@ -469,7 +461,7 @@
         var e = needSignedIn(); if (e) return e;
         if (!grp) return fail('Você não está em nenhum grupo.');
         if (grp.ownerId !== ME) return fail('Só o dono do grupo pode criar convites.');
-        return { ok: true, code: randomCode(), expiresAt: new Date(Date.now() + 7 * 24 * 60 * MIN).toISOString() };
+        return { ok: true, code: DEMO_INVITE, expiresAt: null };
       }, 400);
     },
 

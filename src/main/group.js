@@ -8,6 +8,7 @@
 // `profiles(display_name)` em `group_members`. Por isso `load()` faz consultas separadas
 // (membros; perfis com `id=in.(...)`; `mmr_snapshots` com `user_id=in.(...)`) e junta em JS.
 
+const { validPhoto } = require('../core/socialPhoto');
 const { createRequester, userIdFromToken } = require('./auth');
 const { UserInputError } = require('./controller');
 
@@ -31,7 +32,7 @@ const MESSAGES = Object.freeze({
   already_in_group: 'Você já está em um grupo. Saia dele antes de entrar em outro.',
   not_in_group: 'Você não está em um grupo.',
   not_owner: 'Só o dono do grupo pode fazer isso.',
-  invalid_invite: 'Código de convite inválido, expirado ou já usado.',
+  invalid_invite: 'Este código não corresponde a um grupo. Confira as 10 letras e números.',
   group_full: 'Esse grupo está cheio (máximo de 10 pessoas).',
   invalid_name: `O nome do grupo deve ter de ${GROUP_NAME_MIN} a ${GROUP_NAME_MAX} caracteres, sem < ou >.`,
   rate_limited: 'Muitas tentativas em pouco tempo. Aguarde alguns segundos e tente de novo.',
@@ -102,7 +103,7 @@ function createSupabaseRest({ fetchImpl, supabaseUrl, anonKey, getAccessToken, t
   /** Converte uma resposta de erro do PostgREST/Edge Function em UserInputError. */
   function fail(status, data) {
     const msg = data && typeof data === 'object' && typeof data.message === 'string' ? data.message.trim() : '';
-    if (DB_ERROR_CODES.includes(msg)) return errorFor(msg);
+    if (DB_ERROR_CODES.includes(msg) || Object.prototype.hasOwnProperty.call(extraMessages, msg)) return errorFor(msg);
     if (status === 401) return errorFor('unauthenticated');
     if (status === 403) return errorFor('forbidden');
     return errorFor('bad_response');
@@ -185,7 +186,7 @@ function createGroupClient({
 
   async function load() {
     const { token, id } = await identity();
-    const mine = await getList(`/rest/v1/group_members?select=group_id,groups(id,name,owner_id)&user_id=eq.${id}`, token);
+    const mine = await getList(`/rest/v1/group_members?select=group_id,groups(id,name,owner_id,photo)&user_id=eq.${id}`, token);
     if (mine.length === 0) return null;
     const g = mine[0] && mine[0].groups;
     if (!g || typeof g !== 'object' || !isUuid(g.id) || !isUuid(g.owner_id) || typeof g.name !== 'string') {
@@ -209,15 +210,19 @@ function createGroupClient({
 
     const inList = ids.join(',');
     const [profiles, snapshots] = await Promise.all([
-      getList(`/rest/v1/profiles?select=id,display_name&id=in.(${inList})`, token),
+      getList(`/rest/v1/profiles?select=id,display_name,photo&id=in.(${inList})`, token),
       getList(
         `/rest/v1/mmr_snapshots?select=user_id,current_mmr,goal_mmr,start_mmr,wins,losses,status,updated_at&user_id=in.(${inList})`,
         token,
       ),
     ]);
     const names = new Map();
+    const photos = new Map();
     for (const p of profiles) {
-      if (p && isUuid(p.id)) names.set(p.id.toLowerCase(), cleanDisplayName(p.display_name));
+      if (p && isUuid(p.id)) {
+        names.set(p.id.toLowerCase(), cleanDisplayName(p.display_name));
+        photos.set(p.id.toLowerCase(), validPhoto(p.photo) ? p.photo : null);
+      }
     }
     const mmrs = new Map();
     for (const s of snapshots) {
@@ -226,10 +231,12 @@ function createGroupClient({
     return {
       id: groupId,
       name: g.name,
+      photo: validPhoto(g.photo) ? g.photo : null,
       isOwner: ownerId === id,
       members: ids.map((uid) => ({
         userId: uid,
         displayName: names.get(uid) ?? null,
+        photo: photos.get(uid) ?? null,
         isMe: uid === id,
         isOwner: uid === ownerId,
         mmr: mmrs.get(uid) ?? null,
@@ -251,6 +258,7 @@ function createGroupClient({
     const data = await rpc('create_invite', {}, token);
     const row = Array.isArray(data) ? data[0] : data;
     if (!row || typeof row !== 'object' || !INVITE_RE.test(String(row.code))) throw groupError('bad_response');
+    if (row.expires_at === null) return { code: row.code, expiresAt: null };
     const expiresAt = typeof row.expires_at === 'string' ? Date.parse(row.expires_at) : NaN;
     if (!Number.isFinite(expiresAt)) throw groupError('bad_response');
     return { code: row.code, expiresAt };
@@ -348,6 +356,7 @@ function createGroupService({
     return {
       id: group.id,
       name: group.name,
+      photo: group.photo ?? null,
       isOwner: group.isOwner,
       members: group.members.map((m) => ({ ...m, mmr: m.mmr ? { ...m.mmr } : null })),
     };

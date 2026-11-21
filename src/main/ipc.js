@@ -1,6 +1,7 @@
 'use strict';
 
 const { isAppUrl } = require('./security');
+const { validPhoto } = require('../core/socialPhoto');
 const { UserInputError } = require('./controller');
 
 const CHANNELS = Object.freeze({
@@ -16,6 +17,7 @@ const CHANNELS = Object.freeze({
   recover: 'gr:auth:recover',
   updateProfile: 'gr:profile:update',
   deleteAccount: 'gr:account:delete',
+  social: 'gr:social',
   groupCreate: 'gr:group:create',
   groupJoin: 'gr:group:join',
   groupLeave: 'gr:group:leave',
@@ -159,6 +161,35 @@ function validateUserIdPayload(p) {
   return { userId: p.userId.toLowerCase() };
 }
 
+function validateSocialPayload(p) {
+  if (!isPlainObject(p) || !Object.hasOwn(p, 'action')
+      || Reflect.ownKeys(p).some((k) => k !== 'action' && k !== 'value')) return null;
+  const { action, value } = p;
+  switch (action) {
+    case 'list':
+      return value == null ? { action } : null;
+    case 'search': {
+      if (typeof value !== 'string' || value.length > 128) return null;
+      const query = value.trim();
+      const length = [...query].length;
+      return length >= 2 && length <= 64 ? { action, value: query } : null;
+    }
+    case 'send':
+    case 'accept':
+    case 'remove': {
+      const user = validateUserIdPayload({ userId: value });
+      return user ? { action, value: user.userId } : null;
+    }
+    case 'profilePhoto':
+    case 'groupPhoto':
+      return validPhoto(value) ? { action, value } : null;
+    case 'privacy':
+      return typeof value === 'boolean' ? { action, value } : null;
+    default:
+      return null;
+  }
+}
+
 function validateChatPayload(p) {
   if (!checkObject(p, ['body'], [], { body: CHAT_BODY_RAW_MAX })) return null;
   if (typeof p.body !== 'string') return null;
@@ -209,7 +240,7 @@ function wrapHandler(validate, action, { raw = false } = {}) {
 }
 
 function buildHandlers(controller, {
-  account = null, session = null, group = null, chatFeed = null, voice = null, picker = null, steam = null,
+  account = null, session = null, social = null, group = null, chatFeed = null, voice = null, picker = null, steam = null,
 } = {}) {
   const viaAccount = (fn) => async (d) => {
     if (!account || !account.available) throw new UserInputError(UNAVAILABLE_ERROR);
@@ -255,6 +286,11 @@ function buildHandlers(controller, {
       if (session) session.clear();
       controller.reset();
     })),
+    [CHANNELS.social]: wrapHandler(validateSocialPayload, async ({ action, value }) => {
+      needSignedIn();
+      if (!social) throw new UserInputError(UNAVAILABLE_ERROR);
+      return social(action, value);
+    }, { raw: true }),
     [CHANNELS.groupCreate]: wrapHandler(validateGroupNamePayload, viaGroup((d) => group.create(d.name))),
     [CHANNELS.groupJoin]: wrapHandler(validateJoinPayload, viaGroup((d) => group.join(d.code))),
     [CHANNELS.groupLeave]: wrapHandler(validateResetPayload, viaGroup(() => group.leave())),
@@ -315,6 +351,7 @@ module.exports = {
   validateGroupNamePayload,
   validateJoinPayload,
   validateUserIdPayload,
+  validateSocialPayload,
   validateChatPayload,
   validatePickSourcePayload,
   validateCredentialsPayload,

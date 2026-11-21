@@ -1,67 +1,28 @@
-#!/usr/bin/env node
-/**
- * build-netlify.js — monta dist/ para deploy no Netlify.
- *
- * Estrutura gerada:
- *   dist/index.html          ← preview/index.html com caminhos ajustados
- *   dist/app.js              ← src/renderer/app.js
- *   dist/styles.css          ← src/renderer/styles.css
- *   dist/voice.js            ← src/renderer/voice.js
- *   dist/voice.css           ← src/renderer/voice.css
- *   dist/mock-bridge.js      ← preview/mock-bridge.js
- *   dist/fake-livekit.js     ← preview/fake-livekit.js
- */
-
 'use strict';
 
-const fs   = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
+const { buildSync } = require('esbuild');
+const { supabaseUrl } = require('../config.public.json');
 
-const ROOT = path.join(__dirname, '..');
-const DIST = path.join(ROOT, 'dist');
-
-// Limpa dist
-if (fs.existsSync(DIST)) fs.rmSync(DIST, { recursive: true });
-fs.mkdirSync(DIST, { recursive: true });
-
-function copy(src, dest) {
-  fs.copyFileSync(src, dest);
-  console.log('  copied', path.relative(ROOT, src), '→', path.relative(ROOT, dest));
-}
-
-// Arquivos do renderer
-const renderer = path.join(ROOT, 'src', 'renderer');
-for (const f of ['app.js', 'styles.css', 'voice.js', 'voice.css']) {
-  copy(path.join(renderer, f), path.join(DIST, f));
-}
-
-// Arquivos da preview
-const preview = path.join(ROOT, 'preview');
-for (const f of ['mock-bridge.js', 'fake-livekit.js']) {
-  copy(path.join(preview, f), path.join(DIST, f));
-}
-
-// index.html: ajusta caminhos relativos para flat
-let html = fs.readFileSync(path.join(preview, 'index.html'), 'utf8');
-
-// Troca ../src/renderer/X por ./X
-html = html.replace(/\.\.\/src\/renderer\//g, './');
-
-// Troca ./mock-bridge.js e ./fake-livekit.js (já são relativos, ok)
-// Garante que os scripts da preview também apontem para ./
-html = html.replace(/(?:\.\.\/)?preview\/(mock-bridge|fake-livekit)\.js/g, './$1.js');
-
-// Remove CSP restritiva do preview (Netlify não é Electron, não tem app://)
-// Mantém a tag mas abre connect-src para Supabase/LiveKit usados no mock
-html = html.replace(
-  /content="default-src[^"]*"/,
-  "content=\"default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'\""
-);
-
-// Título mais amigável
-html = html.replace('<title>Ghost Rank (prévia)</title>', '<title>Ghost Rank — Prévia</title>');
-
-fs.writeFileSync(path.join(DIST, 'index.html'), html, 'utf8');
-console.log('  wrote  dist/index.html');
-
-console.log('\n✓ dist/ pronto para o Netlify');
+const root = path.resolve(__dirname, '..');
+const dist = path.join(root, 'dist');
+fs.rmSync(dist, { recursive: true, force: true });
+fs.cpSync(path.join(root, 'src/renderer'), dist, { recursive: true });
+fs.mkdirSync(path.join(dist, 'vendor'), { recursive: true });
+fs.copyFileSync(path.join(root, 'node_modules/livekit-client/dist/livekit-client.umd.js'),
+  path.join(dist, 'vendor/livekit-client.umd.js'));
+buildSync({ entryPoints: [path.join(root, 'src/web/bridge.js')], bundle: true,
+  platform: 'browser', outfile: path.join(dist, 'bridge.js'), target: 'es2020' });
+const page = path.join(dist, 'index.html');
+const html = fs.readFileSync(page, 'utf8').replace('<script src="app.js">',
+  '<script src="bridge.js"></script>\n  <script src="app.js">');
+fs.writeFileSync(page, html);
+const policy = [
+  "default-src 'none'", "script-src 'self'", "style-src 'self'", "img-src 'self' data:",
+  "font-src 'self'", "media-src 'self' blob: mediastream:", "worker-src 'self' blob:",
+  `connect-src ${new URL(supabaseUrl).origin} https://api.opendota.com https://*.livekit.cloud wss://*.livekit.cloud`,
+  "base-uri 'none'", "form-action 'none'", "frame-ancestors 'none'",
+].join('; ');
+fs.writeFileSync(path.join(dist, '_headers'), '/*\n  Content-Security-Policy: ' + policy
+  + '\n  Referrer-Policy: no-referrer\n  X-Content-Type-Options: nosniff\n');

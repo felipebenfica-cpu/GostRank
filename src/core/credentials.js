@@ -36,7 +36,7 @@ function validatePassword(s) {
   if ([...s].length < PASSWORD_MIN) {
     return { ok: false, error: `A senha precisa ter pelo menos ${PASSWORD_MIN} caracteres.` };
   }
-  if (Buffer.byteLength(s, 'utf8') > PASSWORD_MAX) {
+  if (new TextEncoder().encode(s).length > PASSWORD_MAX) {
     return { ok: false, error: `A senha pode ter no máximo ${PASSWORD_MAX} caracteres.` };
   }
   const chars = [...s];

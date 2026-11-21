@@ -4,7 +4,7 @@
 // do Steam e abre no navegador do sistema, só depois de validar a URL.
 
 const { createSupabaseRest } = require('./group');
-const { isAllowedExternalUrl } = require('./security');
+const { isAllowedExternalUrl } = require('../core/externalUrl');
 
 const STEAM_LOGIN_PREFIX = 'https://steamcommunity.com/openid/login?';
 const MAX_URL = 4000;

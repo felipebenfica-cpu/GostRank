@@ -18,7 +18,8 @@
   },
   "devDependencies": {
     "electron": "^45.3.3",
-    "electron-builder": "^26.0.12"
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.28.2"
   },
   "build": {
     "appId": "com.ghostrank.app",
