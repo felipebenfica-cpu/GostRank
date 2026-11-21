@@ -401,11 +401,14 @@
         var email = String((data && data.email) || '').trim().toLowerCase();
         var pw = String((data && data.password) || '');
         if (!emailOk(email)) return fail('Informe um e-mail válido.');
-        if (pw.length < 10) return fail('A senha precisa ter pelo menos 10 caracteres.');
-        if (pw.length > 72) return fail('A senha pode ter no máximo 72 caracteres.');
-        if (/^(.)\1+$/.test(pw)) return fail('Essa senha é fraca demais. Misture letras, números e símbolos.');
-        return ok(); // mesma resposta exista a conta ou não
-      }, 700);
+        if (pw.length < 1) return fail('Informe uma senha.');
+        // Prévia (Netlify): modo demo — qualquer senha vale, cria a conta e já entra.
+        auth.status = 'signed_in';
+        auth.email = email;
+        auth.displayName = auth.displayName || (email.split('@')[0] || 'Fantasma');
+        auth.mmrVisibility = auth.mmrVisibility || 'friends';
+        return ok();
+      }, 400);
     },
 
     signIn: function (data) {
@@ -414,13 +417,14 @@
         var email = String((data && data.email) || '').trim().toLowerCase();
         var pw = String((data && data.password) || '');
         if (!emailOk(email)) return fail('Informe um e-mail válido.');
-        if (email !== DEMO_EMAIL || pw !== DEMO_PASSWORD) return fail('E-mail ou senha incorretos.');
+        if (pw.length < 1) return fail('Informe uma senha.');
+        // Prévia (Netlify): aceita qualquer email/senha — modo demo para testes.
         auth.status = 'signed_in';
         auth.email = email;
-        auth.displayName = auth.displayName || 'Fantasma Noturno';
+        auth.displayName = auth.displayName || (email.split('@')[0] || 'Fantasma');
         auth.mmrVisibility = auth.mmrVisibility || 'friends';
         return ok();
-      }, 700);
+      }, 400);
     },
 
     createGroup: function (name) {
