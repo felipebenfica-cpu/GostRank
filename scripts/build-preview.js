@@ -38,6 +38,7 @@ function build() {
   return html;
 }
 
+function main() {
 const html = build();
 if (process.argv.includes('--check')) {
   const current = fs.existsSync(out) ? fs.readFileSync(out, 'utf8') : '';
@@ -49,5 +50,8 @@ if (process.argv.includes('--check')) {
   fs.writeFileSync(out, html);
   console.log('preview/index.html gerado.');
 }
+}
 
-module.exports = { build };
+if (require.main === module) main();
+
+module.exports = { build, RENDERER_CSS, RENDERER_JS };

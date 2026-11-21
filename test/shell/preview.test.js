@@ -19,6 +19,9 @@ const SCRIPTS = [
   path.join(RENDERER, 'ui.js'),
   path.join(RENDERER, 'shell.js'),
   path.join(RENDERER, 'voice.js'),
+  path.join(RENDERER, 'chat.js'),
+  path.join(RENDERER, 'settings.js'),
+  path.join(RENDERER, 'emoji-data.js'),
   path.join(PREVIEW, 'mock-bridge.js'),
   path.join(PREVIEW, 'fake-livekit.js'),
 ];
@@ -107,7 +110,8 @@ test('a prévia simula a ponte completa da Etapa 6', () => {
     'setStatus', 'setCustomStatus', 'createServer', 'previewInvite', 'joinServer', 'leaveServer', 'deleteServer', 'updateServer', 'createInvite', 'listInvites',
     'revokeInvite', 'setMemberRole', 'transferOwnership', 'kickMember', 'banMember', 'unbanMember', 'listBans', 'setNickname', 'createCategory', 'updateCategory',
     'deleteCategory', 'createChannel', 'updateChannel', 'deleteChannel', 'sendMessage', 'editMessage', 'deleteMessage', 'toggleReaction', 'pinMessage', 'listPinned',
-    'loadOlder', 'markRead', 'searchMessages', 'setTyping', 'openExternal', 'updatePrefs', 'muteTarget', 'voiceToken', 'setVoiceState', 'uploadAvatar', 'removeAvatar']) {
+    'loadOlder', 'markRead', 'searchMessages', 'setTyping', 'openExternal', 'updatePrefs', 'muteTarget', 'voiceToken', 'setVoiceState', 'uploadAvatar', 'removeAvatar',
+    'uploadServerIcon', 'markTargetRead', 'retryMessage', 'onNotificationClick']) {
     assert.match(js, new RegExp('\\b' + name + ': function'), name);
   }
 });
@@ -117,4 +121,32 @@ test('miniaturas de tela só entram se forem data:image/', () => {
   assert.match(js, /indexOf\('data:image\/'\) === 0/);
   const assigns = js.match(/\.src\s*=/g) || [];
   assert.equal(assigns.length, 1, 'só um lugar define src (a miniatura validada)');
+});
+
+test('a prévia simula todo método que o preload expõe', () => {
+  const preload = fs.readFileSync(path.join(ROOT, 'src', 'preload', 'preload.js'), 'utf8');
+  const mock = fs.readFileSync(path.join(PREVIEW, 'mock-bridge.js'), 'utf8');
+  const names = [...preload.matchAll(/^\s{2}([a-zA-Z]+):\s*\(/gm)].map((m) => m[1]);
+  assert.ok(names.length > 40, 'preload com a ponte da Etapa 6');
+  const missing = names.filter((n) => !new RegExp('\\b' + n + ': function').test(mock));
+  assert.deepEqual(missing, [], 'métodos do preload sem simulação na prévia');
+});
+
+test('o trilho rola na vertical sem cortar as dicas (dica flutuante fora do trilho)', () => {
+  const css = fs.readFileSync(path.join(RENDERER, 'styles.css'), 'utf8');
+  assert.doesNotMatch(css, /\.rail-btn\[data-tip\]::after/);
+  assert.match(css, /\.rail-tip\s*\{[^}]*position:\s*fixed/);
+  const rail = /\.rail\s*\{([^}]*)\}/.exec(css)[1];
+  assert.match(rail, /overflow-x:\s*hidden/);
+  assert.match(fs.readFileSync(path.join(RENDERER, 'shell.js'), 'utf8'), /function initRailTips\(/);
+});
+
+test('o build do Netlify leva todo arquivo que a página carrega', () => {
+  const { RENDERER_CSS, RENDERER_JS } = require('../../scripts/build-preview');
+  const html = fs.readFileSync(path.join(RENDERER, 'index.html'), 'utf8');
+  const refs = [...html.matchAll(/(?:src|href)="([a-z-]+\.(?:js|css))"/g)].map((m) => m[1]);
+  for (const r of refs) assert.ok([...RENDERER_CSS, ...RENDERER_JS, 'app.js'].includes(r), r + ' fora da lista do build');
+  const netlify = fs.readFileSync(path.join(ROOT, 'scripts', 'build-netlify.js'), 'utf8');
+  assert.match(netlify, /require\('\.\/build-preview'\)/);
+  assert.doesNotMatch(netlify, /unsafe-inline/);
 });

@@ -712,8 +712,16 @@
     return r;
   }
   function fail(msg) { return { ok: false, error: msg }; }
+  // Como o main real, toda ação que dá certo também empurra a view nova para quem assina onUpdate
+  // (módulos como settings.js e voice.js chamam a ponte direto e esperam a atualização).
   function delay(fn, ms) {
-    return new Promise(function (resolve) { setTimeout(function () { resolve(fn()); }, ms); });
+    return new Promise(function (resolve) {
+      setTimeout(function () {
+        var res = fn();
+        resolve(res);
+        if (res && res.ok) setTimeout(emit, 0);
+      }, ms);
+    });
   }
   function intIn(value, min, max) {
     var s = String(value == null ? '' : value).trim();
@@ -1530,6 +1538,33 @@
         if (target) markReadTarget(target);
         return ok();
       }, 50);
+    },
+
+    markTargetRead: function (target) {
+      return delay(function () {
+        var t = String(target == null ? '' : target);
+        var m = /^([cds]):([0-9a-f-]{36})$/i.exec(t);
+        if (!m) return fail('Alvo inválido.');
+        if (m[1] === 's') {
+          var sv = servers.filter(function (x) { return x.id === m[2]; })[0];
+          if (!sv) return fail('Servidor não encontrado.');
+          sv.channels.forEach(function (c) { if (c.kind === 'text') markReadTarget('c:' + c.id); });
+        } else {
+          markReadTarget(t);
+        }
+        return ok();
+      }, 50);
+    },
+
+    retryMessage: function (id) {
+      return delay(function () {
+        var target = currentTarget();
+        var item = target ? (messages[target] || []).filter(function (x) { return String(x.id) === String(id); })[0] : null;
+        if (!item) return fail('Essa mensagem não existe mais.');
+        item.failed = false;
+        item.pending = false;
+        return ok();
+      }, 300);
     },
 
     searchMessages: function (query) {

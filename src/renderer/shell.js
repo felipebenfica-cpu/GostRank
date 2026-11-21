@@ -1698,9 +1698,9 @@
     var role = srv.role || (selected ? view.server.role : 'member');
     var admin = role === 'owner' || role === 'admin';
     var muted = isMuted('s:' + srv.id) || !!srv.muted;
-    var items = [
-      { label: 'Convidar pessoas', icon: 'userPlus', accent: true, action: function () { openInvite(srv.id); } }
-    ];
+    var items = [];
+    if (hasApi('markTargetRead')) items.push({ label: 'Marcar como lido', icon: 'check', disabled: !hasUnread('s:' + srv.id), action: function () { markTargetRead('s:' + srv.id); } }, { separator: true });
+    items.push({ label: 'Convidar pessoas', icon: 'userPlus', accent: true, action: function () { openInvite(srv.id); } });
     if (admin) items.push({ label: 'Configurações do servidor', icon: 'gear', action: function () { openServerSettings(srv.id); } });
     if (admin && selected) {
       items.push({ label: 'Criar canal', icon: 'plus', action: function () { openChannelDialog({ mode: 'create', categoryId: null }); } });
@@ -1766,12 +1766,30 @@
     ];
   }
 
+  // Marca um alvo como lido sem precisar abri-lo (canal 'c:', conversa 'd:' ou servidor inteiro 's:').
+  function markTargetRead(target) {
+    if (hasApi('markTargetRead')) return act('markTargetRead', target, true);
+    var s = sel();
+    var open = (s.channelId && target === 'c:' + s.channelId) || (s.dmId && target === 'd:' + s.dmId);
+    if (open && hasApi('markRead')) return act('markRead', undefined, true);
+    return Promise.resolve(null);
+  }
+  function hasUnread(target) {
+    var kind = target.charAt(0);
+    var id = target.slice(2);
+    if (kind === 'c') { var c = channelById(id); return !!(c && (c.unread || c.mentions)); }
+    if (kind === 'd') { var d = dmById(id); return !!(d && (d.unread || d.mentions)); }
+    var sv = serverById(id); return !!(sv && (sv.unread || sv.mentions));
+  }
+
   function channelMenu(c) {
     var s = sel();
     var target = 'c:' + c.id;
     var muted = isMuted(target) || !!c.muted;
     var items = [];
-    if (c.kind === 'text' && s.channelId === c.id) items.push({ label: 'Marcar como lido', icon: 'check', action: function () { act('markRead', undefined, true); } });
+    if (c.kind === 'text' && (hasApi('markTargetRead') || s.channelId === c.id)) {
+      items.push({ label: 'Marcar como lido', icon: 'check', disabled: !hasUnread(target), action: function () { markTargetRead(target); } });
+    }
     if (c.kind === 'voice') items.push({ label: 'Entrar no canal de voz', icon: 'speaker', action: function () { openChannel(c); } });
     items.push({ label: muted ? 'Ativar notificações do canal' : 'Silenciar canal', icon: 'bellOff', action: function () { act('muteTarget', { target: target, muted: !muted }); } });
     if (isAdmin()) {
@@ -1787,13 +1805,15 @@
   function dmMenu(d) {
     var target = 'd:' + d.id;
     var muted = isMuted(target) || !!d.muted;
-    return [
+    var items = [];
+    if (hasApi('markTargetRead')) items.push({ label: 'Marcar como lido', icon: 'check', disabled: !hasUnread(target), action: function () { markTargetRead(target); } });
+    return items.concat([
       { label: 'Perfil', icon: 'friends', action: function () { openProfile(d.user.id, document.activeElement); } },
       { label: 'Ligar', icon: 'phone', action: function () { select({ mode: 'dm', dmId: d.id }).then(function () { joinVoice({ dmId: d.id }); }); } },
       { label: muted ? 'Ativar notificações da conversa' : 'Silenciar conversa', icon: 'bellOff', action: function () { act('muteTarget', { target: target, muted: !muted }); } },
       { separator: true },
       { label: 'Copiar ID do usuário', icon: 'copy', action: function () { copy(d.user.id, 'ID copiado.'); } }
-    ];
+    ]);
   }
 
   function confirmDeleteChannel(c) {
@@ -2374,7 +2394,7 @@
           els: { stage: $('voice-stage'), connection: $('voice-connection'), userControls: $('voice-user-controls') },
           getView: function () { return view; },
           onState: onVoiceState,
-          onOpenSettings: function (tab) { openUserSettings(tab || 'account'); }
+          onOpenSettings: function (tab) { openUserSettings(tab || 'voice'); }
         });
         mods.voice = true;
       } catch (e) { mods.voice = false; }
@@ -2410,6 +2430,7 @@
     if (sel().mode === 'home' && signedIn()) ui.lastHomeTab = sel().tab === 'mmr' ? 'mmr' : 'friends';
     applyAppearance();
     renderRail();
+    hideRailTip();
     renderSidebar(page);
     renderUserPanel();
     renderHeader(page);
@@ -2424,10 +2445,51 @@
     if (signedIn()) mentionSound();
   }
 
+  /* Dica flutuante do trilho (hover e foco por teclado). Fica fora do trilho, que rola. */
+  var hideRailTip = function () {};
+  function initRailTips() {
+    var rail = document.querySelector('.rail');
+    if (!rail) return;
+    var tip = el('div', 'rail-tip');
+    tip.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(tip);
+    var current = null;
+    function show(btn) {
+      var text = btn.getAttribute('data-tip');
+      if (!text) return;
+      current = btn;
+      tip.textContent = text;
+      var r = btn.getBoundingClientRect();
+      tip.style.left = Math.round(r.right + 14) + 'px';
+      tip.style.top = Math.round(r.top + r.height / 2) + 'px';
+      tip.classList.add('is-on');
+    }
+    function hide(btn) {
+      if (btn && btn !== current) return;
+      current = null;
+      tip.classList.remove('is-on');
+    }
+    function target(ev) { return ev.target && ev.target.closest ? ev.target.closest('.rail-btn[data-tip]') : null; }
+    rail.addEventListener('mouseover', function (ev) { var b = target(ev); if (b) show(b); });
+    rail.addEventListener('mouseout', function (ev) {
+      var b = target(ev);
+      if (b && !(ev.relatedTarget && b.contains(ev.relatedTarget))) hide(b);
+    });
+    rail.addEventListener('focusin', function (ev) {
+      var b = target(ev);
+      if (b && b.matches(':focus-visible')) show(b);
+    });
+    rail.addEventListener('focusout', function (ev) { hide(target(ev)); });
+    rail.addEventListener('scroll', function () { hide(); }, { passive: true });
+    window.addEventListener('blur', function () { hide(); });
+    hideRailTip = function () { if (current && !document.contains(current)) hide(); };
+  }
+
   function init(o) {
     opts = o;
     bridge = o.bridge;
     initModules();
+    initRailTips();
     if (window.ghostRank && typeof window.ghostRank.onNotificationClick === 'function') {
       try { window.ghostRank.onNotificationClick(function () { focusTitle(); }); } catch (e) { /* opcional */ }
     }

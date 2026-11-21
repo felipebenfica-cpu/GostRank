@@ -115,7 +115,7 @@ test('services v3: entra, carrega amigos/DMs/servidores, abre o último canal, e
   r = await e.call(CHANNELS.select, { mode: 'server', serverId: G1, channelId: V1 });
   assert.equal(r.view.messages, null);
   await e.call(CHANNELS.select, { mode: 'server', serverId: G1, channelId: C1 });
-  r = await e.call(CHANNELS.sendMessage, { body: `oi <@${LUA}>` });
+  r = await e.call(CHANNELS.sendMessageV2, { body: `oi <@${LUA}>` });
   assert.equal(r.ok, true, r.error);
   const post = e.log.find((x) => x[0] === 'POST' && x[1].startsWith('/rest/v1/messages'));
   assert.deepEqual(JSON.parse(post[2]).mentions, [LUA]);
