@@ -35,11 +35,24 @@ jobs:
       - name: Definir a versão
         shell: bash
         run: npm version "0.2.${{ github.run_number }}" --no-git-tag-version --allow-same-version
-      - name: Gerar e publicar (instalador + portátil + latest.yml)
-        run: npx electron-builder --win nsis portable --publish always
+      - name: Gerar instalador, portátil e latest.yml
+        run: npx electron-builder --win nsis portable --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Publicar a versão (é dela que o app instalado puxa a atualização)
+        shell: bash
+        env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="0.2.${{ github.run_number }}"
+          ls dist
+          test -f dist/latest.yml
+          gh release create "v${VERSION}" \
+            "dist/LUMENEX-Setup-${VERSION}.exe" "dist/LUMENEX-Setup-${VERSION}.exe.blockmap" \
+            "dist/latest.yml" "dist/GhostRank-${VERSION}.exe" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
+            --title "LUMENEX ${VERSION}" \
+            --notes "Instale com LUMENEX-Setup-${VERSION}.exe (uma vez só: depois o LUMENEX se atualiza sozinho). GhostRank-${VERSION}.exe é a versão portátil, que não se atualiza sozinha."
       - name: Manter o link antigo funcionando
         shell: bash
         env:
