@@ -534,3 +534,55 @@ t('ajuste de MMR para amigos exige amizade aceita, inclusive dentro do grupo', (
   assert.ok(as(C, `select public.social_friend('remove','${D}')`).ok);
   assert.equal(count(C, 'public.mmr_snapshots', own), 0);
 });
+
+t('0004: editar/excluir apenas texto próprio com sessão e vínculo atual de grupo', () => {
+  const migration = path.join(migDir, '0004_chat_mensagens.sql');
+  const inserted = as(D, "insert into public.messages (group_id, body) values (public.my_group_id(), 'antes') returning id");
+  assert.ok(inserted.ok, inserted.err);
+  const messageId = inserted.out.split('\n').find(line => /^\d+$/.test(line));
+  assert.ok(messageId, inserted.out);
+  for (let i = 0; i < 2; i++) {
+    const m = psqlFile(migration);
+    assert.ok(m.ok, m.err);
+  }
+  const where = 'where id = ' + messageId;
+  const read = uid => as(uid, `select body || '|' || (edited_at is not null)::text from public.messages ${where}`);
+  assert.equal(read(C).last, 'antes|false');
+  const change = `update public.messages set body = 'revista' ${where}`;
+  const erase = `delete from public.messages ${where}`;
+  assert.equal(asAnon(change).ok, false);
+  assert.equal(asAnon(erase).ok, false);
+  for (const uid of [C, B]) { // C é o dono do grupo de D. B pertence a outro grupo.
+    assert.equal(as(uid, change).last, 'UPDATE 0');
+    assert.equal(as(uid, erase).last, 'DELETE 0');
+  }
+  assert.equal(as(D, `update public.messages set edited_at = now() ${where}`).ok, false);
+  assert.equal(as(D, `update public.messages set user_id = '${C}' ${where}`).ok, false);
+  assert.equal(as(D, `update public.messages set group_id = gen_random_uuid() ${where}`).ok, false);
+  assert.equal(as(D, `update public.messages set body = '' ${where}`).ok, false);
+  assert.equal(as(D, change).last, 'UPDATE 1');
+  assert.equal(read(C).last, 'revista|true');
+  assert.ok(as(D, 'select public.leave_group()').ok);
+  assert.equal(as(D, change).last, 'UPDATE 0');
+  assert.equal(as(D, erase).last, 'DELETE 0');
+  assert.ok(as(D, `select public.join_group('${invite(C)}')`).ok);
+  assert.equal(as(D, erase).last, 'DELETE 1');
+  assert.equal(count(C, 'public.messages', 'id = ' + messageId), 0);
+});
+
+t('0005: somente amigos confirmados podem enviar e consultar a conversa privada', () => {
+  const migration = psqlFile(path.join(migDir, '0005_mensagens_diretas.sql'));
+  assert.ok(migration.ok, migration.err);
+  const dm = (uid, peer, body = 'null') => as(uid,
+    `select body from public.social_dm('${peer}',${body},null)`);
+  assert.equal(dm(C, D).ok, false);
+  assert.ok(as(C, `select public.social_friend('send','${D}')`).ok);
+  assert.equal(dm(C, D, "'pendente'").ok, false);
+  assert.ok(as(D, `select public.social_friend('accept','${C}')`).ok);
+  assert.equal(dm(C, D, "'privada'").last, 'privada');
+  assert.equal(dm(D, C).last, 'privada');
+  assert.equal(dm(B, C).ok, false);
+  assert.equal(as(B, 'select * from public.direct_messages').ok, false);
+  assert.ok(as(D, `select public.social_friend('remove','${C}')`).ok);
+  assert.equal(dm(C, D).ok, false);
+});

@@ -1280,6 +1280,10 @@
     if (gid !== lastGroupId) {
       // trocou de grupo (ou saiu): limpa convite, mensagens e chat anterior
       lastGroupId = gid;
+      if (editDialog && editDialog.open) editDialog.close();
+      selectedChatId = null;
+      $('chat-search').value = $('chat-author').value = $('chat-day').value = '';
+      $('chat-search-panel').open = false;
       show(g.inviteBox, false);
       setMessage(g.error, '');
       if (g.dlgInvite.open) g.dlgInvite.close();
@@ -1902,15 +1906,180 @@
     return m.userId ? 'u:' + m.userId : 'n:' + (m.displayName || '');
   }
 
+  var editDialog = $('dlg-chat-action');
+  var chatAction = null;
+  var selectedChatId = null;
+  var searchingChat = false;
+  var authorSignature = '';
+
+  function loadedMessages() {
+    return view && view.chat && Array.isArray(view.chat.messages) ? view.chat.messages : [];
+  }
+
+  function normalizeChatText(value) {
+    return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+  }
+
+  function filterChat(messages) {
+    var authors = new Map(messages.filter(function (m) { return m.userId; }).map(function (m) {
+      return [m.userId, m.mine ? 'Você' : m.displayName || 'Fantasma'];
+    }));
+    var options = Array.from(authors).sort(function (a, b) { return a[1].localeCompare(b[1], 'pt-BR'); });
+    var signature = JSON.stringify(options);
+    if (signature !== authorSignature) {
+      authorSignature = signature;
+      var selected = $('chat-author').value;
+      var select = $('chat-author');
+      select.replaceChildren(new Option('Todos', ''));
+      options.forEach(function (pair) { select.add(new Option(pair[1], pair[0])); });
+      if (authors.has(selected)) select.value = selected;
+    }
+    var query = normalizeChatText($('chat-search').value.trim());
+    var user = $('chat-author').value;
+    var day = $('chat-day').valueAsDate;
+    var dateKey = day ? [day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()].join('-') : '';
+    searchingChat = $('chat-search-panel').open && !!(query || user || dateKey);
+    if (!searchingChat) return messages;
+    return messages.filter(function (m) {
+      var time = toMs(m.createdAt);
+      return (!query || normalizeChatText(m.body).includes(query)) && (!user || m.userId === user) &&
+        (!dateKey || (time !== null && dayKey(time) === dateKey));
+    });
+  }
+
+  function updateChatPosition(items) {
+    var index = items.findIndex(function (li) { return Number(li.dataset.messageId) === selectedChatId; });
+    if (index < 0) selectedChatId = null;
+    items.forEach(function (li, i) { li.classList.toggle('chat-current', index === i); });
+    var status = index >= 0 ? 'Mensagem ' + (index + 1) + ' de ' + items.length :
+      items.length + (items.length === 1 ? ' mensagem' : ' mensagens');
+    $('chat-count').textContent = status + (searchingChat ? ' na busca' : ' no histórico carregado');
+    $('chat-prev').disabled = !items.length || index === 0;
+    $('chat-next').disabled = !items.length || index === items.length - 1;
+  }
+
+  function moveInChat(direction) {
+    var items = Array.from(c.list.querySelectorAll('[data-message-id]'));
+    if (!items.length) return;
+    var index = items.findIndex(function (li) { return Number(li.dataset.messageId) === selectedChatId; });
+    if (direction === 'start') index = 0;
+    else if (direction === 'end') index = items.length - 1;
+    else if (index < 0) index = direction > 0 ? 0 : items.length - 1;
+    else index = Math.max(0, Math.min(items.length - 1, index + direction));
+    var item = items[index];
+    selectedChatId = Number(item.dataset.messageId);
+    updateChatPosition(items);
+    item.focus({ preventScroll: true });
+    item.scrollIntoView({ block: 'nearest' });
+  }
+
+  function applyChatFilters() {
+    selectedChatId = null;
+    chatState.signature = '';
+    renderChat();
+    if (searchingChat) c.scroll.scrollTop = 0;
+  }
+
+  $('chat-search').addEventListener('input', applyChatFilters);
+  $('chat-author').addEventListener('change', applyChatFilters);
+  $('chat-day').addEventListener('change', applyChatFilters);
+  $('chat-search-panel').addEventListener('toggle', applyChatFilters);
+  $('chat-clear').addEventListener('click', function () {
+    $('chat-search').value = $('chat-author').value = $('chat-day').value = '';
+    applyChatFilters();
+    $('chat-search').focus();
+  });
+  $('chat-prev').addEventListener('click', function () { moveInChat(-1); });
+  $('chat-next').addEventListener('click', function () { moveInChat(1); });
+  c.scroll.addEventListener('keydown', function (ev) {
+    if (ev.target !== c.scroll && !ev.target.matches('li[data-message-id]')) return;
+    var keys = { ArrowDown: 1, ArrowUp: -1, Home: 'start', End: 'end' };
+    if (keys[ev.key] === undefined || ev.ctrlKey || ev.altKey || ev.metaKey || ev.shiftKey) return;
+    ev.preventDefault();
+    moveInChat(keys[ev.key]);
+  });
+  document.addEventListener('keydown', function (ev) {
+    if (currentView !== 'chat' || document.querySelector('dialog[open]')) return;
+    if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && ev.key.toLowerCase() === 'f') {
+      ev.preventDefault();
+      $('chat-search-panel').open = true;
+      $('chat-search').focus();
+      $('chat-search').select();
+    }
+  });
+
+  function openChatAction(message, action) {
+    chatAction = { id: message.id, groupId: lastGroupId, action: action };
+    var edit = action === 'edit';
+    $('chat-action-title').textContent = edit ? 'Editar mensagem' : 'Excluir mensagem?';
+    $('chat-edit-body').value = edit ? message.body : '';
+    show($('chat-edit-field'), edit);
+    show($('chat-delete-help'), !edit);
+    show($('chat-delete-preview'), !edit);
+    $('chat-delete-preview').textContent = edit ? '' : message.body;
+    $('chat-action-confirm').textContent = edit ? 'Salvar' : 'Excluir';
+    $('chat-action-confirm').className = 'btn ' + (edit ? 'btn-primary' : 'btn-danger');
+    $('chat-action-confirm').disabled = false;
+    setMessage($('chat-action-error'), '');
+    openDialog(editDialog);
+    $(edit ? 'chat-edit-body' : 'chat-action-cancel').focus();
+  }
+
+  function appendChatActions(li, m) {
+    var actions = el('div', 'chat-msg-actions');
+    [['edit', 'Editar', 'editMessage'], ['delete', 'Excluir', 'deleteMessage']].forEach(function (entry) {
+      if (typeof bridge[entry[2]] !== 'function') return;
+      var button = el('button', 'btn btn-small', entry[1]);
+      button.type = 'button';
+      button.dataset.chatAction = entry[0];
+      button.setAttribute('aria-haspopup', 'dialog');
+      button.addEventListener('click', function () { openChatAction(m, entry[0]); });
+      actions.appendChild(button);
+    });
+    if (actions.childNodes.length) li.appendChild(actions);
+  }
+
+  $('form-chat-action').addEventListener('submit', async function (ev) {
+    ev.preventDefault();
+    var target = chatAction;
+    if (!target || target.groupId !== lastGroupId || $('chat-action-confirm').disabled) return;
+    var editing = target.action === 'edit';
+    var body = $('chat-edit-body').value.trim();
+    if (editing && !body) {
+      setMessage($('chat-action-error'), 'Escreva uma mensagem antes de salvar.');
+      $('chat-edit-body').focus();
+      return;
+    }
+    $('chat-action-confirm').disabled = true;
+    var res = await call(function () {
+      return editing ? bridge.editMessage(target.id, body) : bridge.deleteMessage(target.id);
+    });
+    if (target !== chatAction || target.groupId !== lastGroupId) return;
+    $('chat-action-confirm').disabled = false;
+    var error = applyResult(res);
+    if (error) { setMessage($('chat-action-error'), error); return; }
+    editDialog.close();
+    c.live.textContent = editing ? 'Mensagem editada.' : 'Mensagem excluída.';
+  });
+  editDialog.addEventListener('close', function () {
+    var target = chatAction;
+    chatAction = null;
+    if (!target || target.groupId !== lastGroupId) return;
+    var li = document.getElementById('chat-message-' + target.id);
+    var button = li && li.querySelector('[data-chat-action="' + target.action + '"]');
+    (button || c.scroll).focus({ preventScroll: true });
+  });
+
   function renderChat() {
     var chat = (view && view.chat) || { messages: [], status: 'idle' };
-    var msgs = Array.isArray(chat.messages) ? chat.messages : [];
+    var loaded = loadedMessages();
+    var msgs = filterChat(loaded);
     show(c.status, chat.status === 'error');
-    show(c.empty, msgs.length === 0);
+    show(c.empty, loaded.length === 0);
+    show(c.scroll.querySelector('.chat-welcome'), !searchingChat);
+    show($('chat-no-result'), searchingChat && msgs.length === 0);
 
-    var first = msgs.length ? msgs[0].id : '';
-    var last = msgs.length ? msgs[msgs.length - 1].id : '';
-    var sig = lastGroupId + '|' + msgs.length + '|' + first + '|' + last;
+    var sig = JSON.stringify([lastGroupId, searchingChat, msgs]);
     if (sig === chatState.signature) return;
 
     var stick = chatState.forceScroll || atBottom();
@@ -1919,6 +2088,8 @@
     var isFirstLoad = chatState.lastId === null;
     var myName = accountLabel(authInfo());
 
+    var active = document.activeElement;
+    var focused = active && c.list.contains(active) && active.closest('[data-message-id]');
     c.list.textContent = '';
     var prev = null; // { key, ms, day }
     msgs.forEach(function (m) {
@@ -1936,6 +2107,9 @@
       var author = mine ? (m.displayName || myName || 'Você') : (m.displayName || 'Fantasma');
 
       var li = el('li', 'msg' + (mine ? ' mine' : '') + (cont ? ' is-cont' : ' is-first'));
+      li.dataset.messageId = String(m.id);
+      li.id = 'chat-message-' + m.id;
+      li.tabIndex = -1;
       if (cont) {
         // sequência do mesmo autor: só o texto (autor e hora ficam para o leitor de tela)
         var hiddenMeta = el('span', 'visually-hidden', author + (ms != null ? ', ' + chatTime(ms) : '') + ': ');
@@ -1957,14 +2131,24 @@
         }
         li.appendChild(meta);
       }
-      li.appendChild(el('p', 'msg-body', typeof m.body === 'string' ? m.body : ''));
+      const formatted = el('div', 'msg-body');
+      window.GhostText.append(formatted, m.body || '');
+      li.appendChild(formatted);
+      if (m.editedAt) li.appendChild(el('small', 'msg-edited', 'Editada'));
+      if (mine) appendChatActions(li, m);
       c.list.appendChild(li);
       prev = { key: key, ms: ms, day: day };
       if (!isFirstLoad && !mine && typeof m.id === 'number' && m.id > chatState.lastId) announce.push(m);
     });
 
+    updateChatPosition(Array.from(c.list.querySelectorAll('[data-message-id]')));
+    if (focused) {
+      var nextFocus = document.getElementById(focused.id);
+      if (nextFocus && active.dataset.chatAction) nextFocus = nextFocus.querySelector('[data-chat-action="' + active.dataset.chatAction + '"]');
+      (nextFocus || c.scroll).focus({ preventScroll: true });
+    }
     chatState.signature = sig;
-    chatState.lastId = msgs.reduce(function (mx, m) { return typeof m.id === 'number' && m.id > mx ? m.id : mx; }, chatState.lastId || 0);
+    chatState.lastId = loaded.reduce(function (mx, m) { return typeof m.id === 'number' && m.id > mx ? m.id : mx; }, chatState.lastId || 0);
 
     if (stick) scrollChatToEnd();
     else c.scroll.scrollTop = prevTop;
@@ -2203,6 +2387,7 @@
     show($('friends-item'), !!key);
     show($('social-settings'), !!key);
     if (key === socialAccount) return;
+    window.GhostDM.close();
     socialAccount = key;
     profileRequest++;
     friendRequest++;
@@ -2251,6 +2436,12 @@
       addFriendAction(actions, 'Recusar', 'remove', row);
     }
     if (row.state === 'outgoing') addFriendAction(actions, 'Cancelar pedido', 'remove', row);
+    if (row.state === 'friend') {
+      const dm = el('button', 'btn btn-small', 'Mensagem');
+      dm.type = 'button';
+      dm.addEventListener('click', () => window.GhostDM.open(row));
+      actions.appendChild(dm);
+    }
     if (row.state === 'friend') addFriendAction(actions, 'Desfazer amizade', 'remove', row);
     li.appendChild(actions);
     return li;

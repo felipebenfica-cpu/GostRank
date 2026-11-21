@@ -14,6 +14,7 @@ const DEFAULT_PAGE = 50;
 const POLL_MS = 4000;
 
 const CHAT_MESSAGES = Object.freeze({
+  unavailable_message: 'Essa mensagem não está disponível para alteração.',
   empty_body: 'Escreva uma mensagem.',
   long_body: `A mensagem pode ter no máximo ${BODY_MAX} caracteres.`,
   invalid_body: 'A mensagem tem caracteres não permitidos.',
@@ -49,12 +50,17 @@ function toMessage(row) {
     userId: row.user_id.toLowerCase(),
     body: row.body,
     createdAt: Number.isFinite(createdAt) ? createdAt : null,
+    ...(row.edited_at ? { editedAt: Date.parse(row.edited_at), revision: row.edited_at } : {}),
   };
 }
 
 function createChatClient({ fetchImpl, supabaseUrl, anonKey, getAccessToken, timeoutMs = 10000 } = {}) {
   const { identity, call, fail, ok } = createSupabaseRest({ fetchImpl, supabaseUrl, anonKey, getAccessToken, timeoutMs });
-  const COLS = 'id,user_id,body,created_at';
+  const baseColumns = 'id,user_id,body,created_at';
+  const COLS = baseColumns + ',edited_at';
+  function lacksRevision(response) {
+    return response.status === 400 && response.data?.code === '42703';
+  }
 
   /**
    * Mensagens com id > afterId em ordem crescente. Sem afterId (0/null): as `limit` mais recentes.
@@ -68,7 +74,9 @@ function createChatClient({ fetchImpl, supabaseUrl, anonKey, getAccessToken, tim
     const q = after > 0
       ? `/rest/v1/messages?select=${COLS}&group_id=eq.${gid}&id=gt.${after}&order=id.asc&limit=${n}`
       : `/rest/v1/messages?select=${COLS}&group_id=eq.${gid}&order=id.desc&limit=${n}`;
-    const { status, data } = await call(q, { token });
+    let response = await call(q, { token });
+    if (lacksRevision(response)) response = await call(q.replace(COLS, baseColumns), { token });
+    const { status, data } = response;
     if (!ok(status)) throw fail(status, data);
     if (!Array.isArray(data) || data.length > n) throw groupError('bad_response');
     const out = data.map(toMessage).filter(Boolean).filter((m) => m.id > after);
@@ -81,7 +89,7 @@ function createChatClient({ fetchImpl, supabaseUrl, anonKey, getAccessToken, tim
     if (!v.ok) throw chatError(v.code);
     if (!isUuid(groupId)) throw groupError('not_in_group');
     const { token, id } = await identity();
-    const { status, data } = await call(`/rest/v1/messages?select=${COLS}`, {
+    const { status, data } = await call(`/rest/v1/messages?select=${baseColumns}`, {
       method: 'POST',
       token,
       body: { group_id: groupId.toLowerCase(), user_id: id, body: v.value },
@@ -93,7 +101,67 @@ function createChatClient({ fetchImpl, supabaseUrl, anonKey, getAccessToken, tim
     return msg;
   }
 
-  return { fetchSince, send };
+  // Confere a janela inteira por id + revisão, e transfere texto só para as linhas alteradas.
+  // Uma linha que desaparece do índice foi excluída ou saiu das últimas 200.
+  async function fetchRecent(groupId, previous, limit = MAX_MESSAGES) {
+    if (!isUuid(groupId)) throw groupError('not_in_group');
+    const size = Math.max(1, Math.min(MAX_MESSAGES, limit));
+    if (previous.length === 0) return fetchSince(groupId, 0, size);
+    const { token } = await identity();
+    const groupFilter = `group_id=eq.${groupId.toLowerCase()}`;
+    const index = await call(`/rest/v1/messages?select=id,edited_at&${groupFilter}&order=id.desc&limit=${size}`, { token });
+    if (lacksRevision(index)) return fetchSince(groupId, 0, size);
+    if (!ok(index.status)) throw fail(index.status, index.data);
+    if (!Array.isArray(index.data) || index.data.length > size) throw groupError('bad_response');
+    const cached = new Map(previous.map((m) => [m.id, m]));
+    const rows = [];
+    const needed = new Set();
+    for (const version of index.data) {
+      if (!version || !Number.isSafeInteger(version.id) || version.id < 1) throw groupError('bad_response');
+      const old = cached.get(version.id);
+      if (old && (old.revision ?? null) === version.edited_at) rows.push(old);
+      else needed.add(version.id);
+    }
+    if (needed.size) {
+      const changed = await call(`/rest/v1/messages?select=${COLS}&${groupFilter}&id=in.(${[...needed].join(',')})`, { token });
+      if (!ok(changed.status)) throw fail(changed.status, changed.data);
+      if (!Array.isArray(changed.data) || changed.data.length > needed.size) throw groupError('bad_response');
+      for (const row of changed.data) {
+        const m = toMessage(row);
+        if (!m || !needed.delete(m.id)) throw groupError('bad_response');
+        rows.push(m);
+      }
+    }
+    return rows.sort((a, b) => a.id - b.id);
+  }
+
+  async function changeOwn(groupId, messageId, method, body) {
+    if (!isUuid(groupId)) throw groupError('not_in_group');
+    if (!Number.isSafeInteger(messageId) || messageId < 1) throw chatError('unavailable_message');
+    const { token, id } = await identity();
+    const filters = `group_id=eq.${groupId.toLowerCase()}&id=eq.${messageId}&user_id=eq.${id}`;
+    const { status, data } = await call(`/rest/v1/messages?select=${method === 'DELETE' ? baseColumns : COLS}&${filters}`, {
+      method, token, body, headers: { Prefer: 'return=representation' },
+    });
+    if (method === 'PATCH' && lacksRevision({ status, data })) throw new UserInputError('A edição aguarda a atualização do banco do GostRank.');
+    if (!ok(status)) throw fail(status, data);
+    if (Array.isArray(data) && data.length === 0) throw chatError('unavailable_message');
+    const message = Array.isArray(data) && data.length === 1 ? toMessage(data[0]) : null;
+    if (!message || message.id !== messageId || message.userId !== id) throw groupError('bad_response');
+    return message;
+  }
+
+  async function edit(groupId, id, body) {
+    const v = validateBody(body);
+    if (!v.ok) throw chatError(v.code);
+    return changeOwn(groupId, id, 'PATCH', { body: v.value });
+  }
+
+  function remove(groupId, id) {
+    return changeOwn(groupId, id, 'DELETE');
+  }
+
+  return { fetchSince, fetchRecent, send, edit, remove };
 }
 
 /**
@@ -104,7 +172,6 @@ function createChatFeed({
   client,
   intervalMs = POLL_MS,
   maxMessages = MAX_MESSAGES,
-  pageSize = DEFAULT_PAGE,
   onChange = () => {},
   timers = { setInterval: (...a) => setInterval(...a), clearInterval: (...a) => clearInterval(...a) },
 } = {}) {
@@ -136,27 +203,6 @@ function createChatFeed({
     }
   }
 
-  function lastId() {
-    return messages.length > 0 ? messages[messages.length - 1].id : 0;
-  }
-
-  function merge(rows) {
-    const seen = new Set(messages.map((m) => m.id));
-    let added = 0;
-    for (const r of rows) {
-      if (!seen.has(r.id)) {
-        seen.add(r.id);
-        messages.push(r);
-        added++;
-      }
-    }
-    if (added > 0) {
-      messages.sort((a, b) => a.id - b.id);
-      if (messages.length > maxMessages) messages = messages.slice(messages.length - maxMessages);
-    }
-    return added;
-  }
-
   /** Uma busca por vez; pedido durante uma busca agenda exatamente mais uma em seguida. */
   function poll() {
     if (!ctx) return Promise.resolve(false);
@@ -168,13 +214,17 @@ function createChatFeed({
     const groupId = ctx.groupId;
     inflight = (async () => {
       try {
-        const rows = await client.fetchSince(groupId, lastId(), pageSize);
+        const rows = await client.fetchRecent(groupId, messages, maxMessages);
         if (gen !== generation) return false;
-        const added = merge(rows);
-        const changed = added > 0 || status !== 'idle';
+        const changed = rows.length !== messages.length || rows.some((m, i) => {
+          const old = messages[i];
+          return m.id !== old.id || m.body !== old.body || m.revision !== old.revision;
+        });
+        const notify = changed || status !== 'idle';
+        messages = rows;
         status = 'idle';
-        if (changed) emit();
-        return added > 0;
+        if (notify) emit();
+        return changed;
       } catch {
         if (gen === generation && status !== 'error') {
           status = 'error';
@@ -233,6 +283,36 @@ function createChatFeed({
     await poll();
   }
 
+  function ownMessage(id) {
+    if (!ctx) throw groupError('not_in_group');
+    if (!ctx.me || !messages.some((m) => m.id === id && m.userId === ctx.me)) {
+      throw chatError('unavailable_message');
+    }
+    return ctx.groupId;
+  }
+
+  async function edit(id, body) {
+    const groupId = ownMessage(id);
+    const owner = ctx.me;
+    const updated = await client.edit(groupId, id, body);
+    if (ctx?.groupId !== groupId || ctx.me !== owner) return;
+    generation++;
+    messages = messages.map((m) => m.id === id ? updated : m);
+    emit();
+    await poll();
+  }
+
+  async function remove(id) {
+    const groupId = ownMessage(id);
+    const owner = ctx.me;
+    await client.remove(groupId, id);
+    if (ctx?.groupId !== groupId || ctx.me !== owner) return;
+    generation++;
+    messages = messages.filter((m) => m.id !== id);
+    emit();
+    await poll();
+  }
+
   function getView() {
     const names = ctx ? ctx.names : new Map();
     const me = ctx ? ctx.me : null;
@@ -243,6 +323,7 @@ function createChatFeed({
         displayName: names.get(m.userId) ?? null,
         body: m.body,
         createdAt: m.createdAt,
+        editedAt: m.editedAt ?? null,
         mine: me !== null && m.userId === me,
       })),
       status,
@@ -255,7 +336,7 @@ function createChatFeed({
     reschedule();
   }
 
-  return { setContext, setFocused, poll, send, getView, stop, isRunning };
+  return { setContext, setFocused, poll, send, edit, remove, getView, stop, isRunning };
 }
 
 module.exports = {

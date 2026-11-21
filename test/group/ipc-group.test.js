@@ -27,7 +27,7 @@ const LK_TOKEN = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.c2lnbmF0dXJh';
 
 const NEW_CHANNELS = [
   'gr:group:create', 'gr:group:join', 'gr:group:leave', 'gr:group:invite', 'gr:group:remove', 'gr:group:refresh',
-  'gr:chat:send', 'gr:voice:token', 'gr:voice:listSources', 'gr:voice:pickSource', 'gr:steam:link',
+  'gr:chat:send', 'gr:chat:edit', 'gr:chat:delete', 'gr:voice:token', 'gr:voice:listSources', 'gr:voice:pickSource', 'gr:steam:link',
 ];
 
 test('validação de payload dos canais novos', () => {
@@ -149,7 +149,7 @@ function groupState() {
     ['/rest/v1/profiles?select=id,display_name', { status: 200, body: [{ id: UID, display_name: 'Eu Mesmo' }, { id: U2, display_name: 'Colega' }] }],
     ['/rest/v1/mmr_snapshots?select=', { status: 200, body: [] }],
     ['/rest/v1/mmr_snapshots?on_conflict', { status: 201 }],
-    ['/rest/v1/messages?select=id,user_id,body,created_at&group_id', { status: 200, body: s.messages }],
+    ['/rest/v1/messages?select=id,user_id,body,created_at,edited_at&group_id', { status: 200, body: s.messages }],
     ['/rest/v1/messages?select=id,user_id,body,created_at', (url, init) => {
       const b = JSON.parse(init.body);
       const row = { id: s.messages.length + 1, user_id: b.user_id, body: b.body, created_at: '2026-11-20T10:00:00Z' };
@@ -311,4 +311,34 @@ test('canal social valida argumentos antes de chamar o serviço e só aceita a j
   const r = await run(TRUSTED, { action: 'search', value: '  Felipe  ' });
   assert.deepEqual(r, { ok: true, rows: [] });
   assert.deepEqual(calls, [['search', 'Felipe']]);
+});
+
+test('IPC permite editar e excluir com sessão, grupo e ID válidos', async () => {
+  const calls = [];
+  let signedIn = true;
+  let hasGroup = true;
+  const handlers = ipc.buildHandlers({ getView: () => ({}) }, {
+    account: { available: true, isSignedIn: () => signedIn },
+    group: { hasGroup: () => hasGroup },
+    chatFeed: {
+      edit: async (id, body) => { calls.push(['edit', id, body]); },
+      remove: async (id) => { calls.push(['delete', id]); },
+    },
+  });
+  const edit = handlers['gr:chat:edit'];
+  const remove = handlers['gr:chat:delete'];
+  assert.equal((await edit(TRUSTED, { id: 7, body: '  corrigida  ' })).ok, true);
+  assert.equal((await remove(TRUSTED, { id: 7 })).ok, true);
+  for (const id of [0, -1, '7', 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.equal((await edit(TRUSTED, { id, body: 'x' })).ok, false);
+    assert.equal((await remove(TRUSTED, { id })).ok, false);
+  }
+  assert.equal((await edit(TRUSTED, { id: 7, body: ' ' })).ok, false);
+  assert.equal((await remove(TRUSTED, { id: 7, userId: U2 })).ok, false);
+  hasGroup = false;
+  assert.equal((await remove(TRUSTED, { id: 7 })).ok, false);
+  signedIn = false;
+  hasGroup = true;
+  assert.equal((await edit(TRUSTED, { id: 7, body: 'x' })).ok, false);
+  assert.deepEqual(calls, [['edit', 7, 'corrigida'], ['delete', 7]]);
 });
