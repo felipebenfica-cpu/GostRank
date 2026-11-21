@@ -24,12 +24,14 @@ const RENDERER_CSS = ['styles.css', 'chat.css', 'settings.css', 'voice.css', 'pr
 const RENDERER_JS = ['ui.js', 'dnd.js', 'profile-look.js', 'emoji-data.js', 'chat.js', 'settings.js', 'voice.js', 'shell.js'];
 // Arquivos da tela que não são scripts do app (carregados no <head>) e a pasta da marca
 const RENDERER_HEAD_JS = ['theme-boot.js'];
-const RENDERER_ASSETS = ['brand/favicon.svg', 'brand/lumenex-mark.svg', 'brand/icon-192.png', 'brand/icon-512.png', 'manifest.webmanifest'];
+const RENDERER_ASSETS = ['brand/favicon-32.png', 'brand/lumenex-emblem.webp', 'brand/lumenex-icon-128.webp', 'brand/icon-192.png', 'brand/icon-512.png', 'brand/apple-touch-icon.png', 'manifest.webmanifest'];
 
 function build() {
   let html = fs.readFileSync(src, 'utf8');
   html = replaceOnce(html, '  <title>LUMENEX</title>\n', `  <meta http-equiv="Content-Security-Policy" content="${CSP}">\n  <title>LUMENEX (prévia)</title>\n`);
-  html = replaceOnce(html, 'href="brand/favicon.svg"', 'href="../src/renderer/brand/favicon.svg"');
+  html = replaceOnce(html, 'href="brand/favicon-32.png"', 'href="../src/renderer/brand/favicon-32.png"');
+  html = html.split('src="brand/').join('src="../src/renderer/brand/');
+  html = replaceOnce(html, '  <title>LUMENEX (prévia)</title>\n', '  <title>LUMENEX (prévia)</title>\n  <meta name="lx-asset-base" content="../src/renderer/">\n');
   for (const name of RENDERER_HEAD_JS) {
     html = replaceOnce(html, `  <script src="${name}"></script>`, `  <script src="../src/renderer/${name}"></script>`);
   }

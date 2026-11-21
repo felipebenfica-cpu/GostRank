@@ -102,7 +102,7 @@ function runBundle(respond) {
 
 test('build gera só os arquivos da versão web, sem config local nem prévia', { skip }, () => {
   const files = listFiles(built()).sort();
-  const expected = [...APP_FILES, 'bridge.js', 'index.html', '_headers', 'favicon.svg', 'vendor/livekit-client.umd.js'].sort();
+  const expected = [...APP_FILES, 'bridge.js', 'index.html', '_headers', 'favicon.png', 'vendor/livekit-client.umd.js'].sort();
   assert.deepEqual(files, expected);
   const bundle = fs.readFileSync(path.join(built(), 'bridge.js'), 'utf8');
   for (const bad of ['config.local', 'mock-bridge', 'service_role', 'LIVEKIT_API_SECRET']) {

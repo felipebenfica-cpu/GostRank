@@ -84,26 +84,19 @@
     return svg;
   }
 
-  // Símbolo LUMENEX (provisório: "L" dourado com traço vermelho). O nome ghostSvg fica por compatibilidade.
-  var MARK_L = 'M6.5 3.5h4.6v12.2h8.2l-2.4 4.8H6.5z';
-  var MARK_SPARK = 'M16.4 3.5h2.6l-3.2 6.2h-1.7z';
+  // Emblema oficial LUMENEX (imagem). O nome ghostSvg fica por compatibilidade.
   function markSvg(size, cls) {
-    var svg = document.createElementNS(SVG_NS, 'svg');
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('width', String(size || 24));
-    svg.setAttribute('height', String(size || 24));
-    svg.setAttribute('aria-hidden', 'true');
-    svg.setAttribute('focusable', 'false');
-    svg.setAttribute('class', 'lx-mark' + (cls ? ' ' + cls : ''));
-    var p = document.createElementNS(SVG_NS, 'path');
-    p.setAttribute('class', 'ghost-body lx-l');
-    p.setAttribute('d', MARK_L);
-    svg.appendChild(p);
-    var q = document.createElementNS(SVG_NS, 'path');
-    q.setAttribute('class', 'lx-spark');
-    q.setAttribute('d', MARK_SPARK);
-    svg.appendChild(q);
-    return svg;
+    var n = size || 24;
+    var img = document.createElement('img');
+    var base = (document.querySelector('meta[name="lx-asset-base"]') || {}).content || '';
+    img.src = base + (n <= 48 ? 'brand/lumenex-icon-128.webp' : 'brand/lumenex-emblem.webp');
+    img.width = n;
+    img.height = n;
+    img.alt = '';
+    img.decoding = 'async';
+    img.setAttribute('aria-hidden', 'true');
+    img.className = 'lx-mark' + (cls ? ' ' + cls : '');
+    return img;
   }
   var ghostSvg = markSvg;
 

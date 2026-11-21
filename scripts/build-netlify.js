@@ -28,7 +28,7 @@ const APP_FILES = [...RENDERER_CSS, ...RENDERER_HEAD_JS, ...RENDERER_JS, 'app.js
 // no Electron a CSP não tem manifest-src e o app já é "instalado".
 const WEB_HEAD = [
   '  <link rel="manifest" href="manifest.webmanifest">',
-  '  <link rel="apple-touch-icon" href="brand/icon-192.png">',
+  '  <link rel="apple-touch-icon" href="brand/apple-touch-icon.png">',
   '  <meta name="application-name" content="LUMENEX">',
   '  <meta name="apple-mobile-web-app-title" content="LUMENEX">',
   '  <meta property="og:type" content="website">',
@@ -36,7 +36,7 @@ const WEB_HEAD = [
   '  <meta property="og:title" content="LUMENEX">',
   '  <meta property="og:description" content="MMR de Dota 2, amigos, servidores, chat e voz.">',
   '  <meta property="og:image" content="brand/icon-512.png">',
-  '  <meta name="twitter:card" content="summary">',
+  '  <meta name="twitter:card" content="summary_large_image">',
 ].join('\n');
 
 function copy(src, dest) {
@@ -120,8 +120,8 @@ function buildWeb({ outDir = path.join(ROOT, 'dist'), log = console.log } = {}) 
   html = html.replace(marker, marker + '\n  <script src="bridge.js"></script>');
   if (!html.includes('</head>')) throw new Error('index.html sem </head>');
   html = html.replace('</head>', WEB_HEAD + '\n</head>');
-  // favicon também na raiz (navegadores que pedem /favicon.ico ou /favicon.svg direto)
-  copy(path.join(RENDERER, 'brand', 'favicon.svg'), path.join(outDir, 'favicon.svg'));
+  // favicon também na raiz (navegadores que pedem /favicon.png direto)
+  copy(path.join(RENDERER, 'brand', 'favicon-32.png'), path.join(outDir, 'favicon.png'));
   checkRefs(html, outDir);
   fs.writeFileSync(path.join(outDir, 'index.html'), html, 'utf8');
   fs.writeFileSync(path.join(outDir, '_headers'), headersFile(supabaseOrigin()), 'utf8');

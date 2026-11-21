@@ -8,7 +8,8 @@
   <meta name="theme-color" content="#000000">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'">
   <title>LUMENEX (prévia)</title>
-  <link rel="icon" href="../src/renderer/brand/favicon.svg" type="image/svg+xml">
+  <meta name="lx-asset-base" content="../src/renderer/">
+  <link rel="icon" href="../src/renderer/brand/favicon-32.png" sizes="32x32" type="image/png">
   <script src="../src/renderer/theme-boot.js"></script>
   <link rel="stylesheet" href="../src/renderer/styles.css">
   <link rel="stylesheet" href="../src/renderer/chat.css">
@@ -27,10 +28,7 @@
         <li id="rail-home-item" class="rail-item">
           <span class="rail-pill" aria-hidden="true"></span>
           <button id="rail-home" class="rail-btn rail-home" type="button" aria-label="Mensagens diretas e amigos" data-tip="Mensagens diretas">
-            <svg class="rail-ghost lx-mark" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" focusable="false">
-              <path class="ghost-body lx-l" d="M6.5 3.5h4.6v12.2h8.2l-2.4 4.8H6.5z"/>
-              <path class="lx-spark" d="M16.4 3.5h2.6l-3.2 6.2h-1.7z"/>
-            </svg>
+            <img class="rail-ghost lx-mark" src="../src/renderer/brand/lumenex-icon-128.webp" width="28" height="28" alt="" decoding="async">
             <span id="rail-home-badge" class="rail-badge" aria-hidden="true" hidden></span>
           </button>
         </li>
@@ -176,6 +174,7 @@
     <!-- 1. Configuração inicial -->
     <section id="setup-view" class="setup" aria-labelledby="setup-title" hidden>
       <div class="card setup-card">
+        <img class="brand-emblem" src="../src/renderer/brand/lumenex-emblem.webp" width="140" height="140" alt="LUMENEX" decoding="async">
         <h2 id="setup-title" class="title">Bem-vindo ao LUMENEX</h2>
         <p class="lead">Acompanhe seu MMR de Dota 2 partida a partida e veja quanto falta para a sua meta. Tudo fica salvo só neste computador.</p>
 
@@ -259,10 +258,7 @@
       <section class="card matches" aria-labelledby="matches-title">
         <h2 id="matches-title" class="section-title">Partidas</h2>
         <div id="matches-empty" class="empty" hidden>
-          <svg class="empty-ghost lx-mark" viewBox="0 0 24 24" width="48" height="48" aria-hidden="true" focusable="false">
-              <path class="ghost-body lx-l" d="M6.5 3.5h4.6v12.2h8.2l-2.4 4.8H6.5z"/>
-              <path class="lx-spark" d="M16.4 3.5h2.6l-3.2 6.2h-1.7z"/>
-            </svg>
+          <img class="empty-ghost lx-mark" src="../src/renderer/brand/lumenex-icon-128.webp" width="48" height="48" alt="" decoding="async">
           <p class="empty-title">Nenhuma partida ainda por aqui</p>
           <p class="empty-text">Tudo certo! Jogue uma ranqueada e, poucos minutos depois de ela terminar, a partida aparece nesta lista e o MMR é atualizado sozinho.</p>
         </div>
@@ -326,10 +322,7 @@
               <h2 id="friends-count" class="friends-count"></h2>
               <ul id="friends-list" class="people-list" role="list" aria-labelledby="friends-count"></ul>
               <div id="friends-empty" class="view-empty friends-empty" hidden>
-                <svg class="empty-ghost lx-mark" viewBox="0 0 24 24" width="64" height="64" aria-hidden="true" focusable="false">
-              <path class="ghost-body lx-l" d="M6.5 3.5h4.6v12.2h8.2l-2.4 4.8H6.5z"/>
-              <path class="lx-spark" d="M16.4 3.5h2.6l-3.2 6.2h-1.7z"/>
-            </svg>
+                <img class="empty-ghost lx-mark" src="../src/renderer/brand/lumenex-emblem.webp" width="64" height="64" alt="" decoding="async">
                 <p id="friends-empty-text" class="view-empty-text"></p>
               </div>
             </div>
@@ -371,10 +364,7 @@
           <!-- Vazio (sem servidor/canal) -->
           <section id="view-empty" class="view view-empty-page" aria-labelledby="channel-title" hidden>
             <div class="view-empty">
-              <svg class="empty-ghost lx-mark" viewBox="0 0 24 24" width="72" height="72" aria-hidden="true" focusable="false">
-              <path class="ghost-body lx-l" d="M6.5 3.5h4.6v12.2h8.2l-2.4 4.8H6.5z"/>
-              <path class="lx-spark" d="M16.4 3.5h2.6l-3.2 6.2h-1.7z"/>
-            </svg>
+              <img class="empty-ghost lx-mark" src="../src/renderer/brand/lumenex-emblem.webp" width="72" height="72" alt="" decoding="async">
               <p id="empty-title" class="view-empty-title">Nada por aqui</p>
               <p id="empty-text" class="view-empty-text"></p>
             </div>
@@ -651,6 +641,7 @@
   <!-- Diálogo: entrar -->
   <dialog id="dlg-signin" class="dialog" aria-labelledby="dlg-signin-title">
     <form id="form-signin" class="form" novalidate>
+      <img class="brand-emblem" src="../src/renderer/brand/lumenex-emblem.webp" width="112" height="112" alt="LUMENEX" decoding="async">
       <h2 id="dlg-signin-title" class="dialog-title">Entrar</h2>
       <div class="field">
         <label for="signin-email">E-mail</label>
@@ -680,6 +671,7 @@
   <!-- Diálogo: criar conta -->
   <dialog id="dlg-signup" class="dialog" aria-labelledby="dlg-signup-title">
     <form id="form-signup" class="form" novalidate>
+      <img class="brand-emblem" src="../src/renderer/brand/lumenex-emblem.webp" width="112" height="112" alt="LUMENEX" decoding="async">
       <h2 id="dlg-signup-title" class="dialog-title">Criar conta</h2>
       <div id="signup-fields" class="form">
       <div class="field">

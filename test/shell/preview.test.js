@@ -160,7 +160,7 @@ test('o build do Netlify leva todo arquivo que a página carrega', () => {
 test('marca LUMENEX: título, ícone, símbolo e nada da marca antiga no que a pessoa vê', () => {
   const html = fs.readFileSync(path.join(RENDERER, 'index.html'), 'utf8');
   assert.match(html, /<title>LUMENEX<\/title>/);
-  assert.match(html, /<link rel="icon" href="brand\/favicon\.svg"/);
+  assert.match(html, /<link rel="icon" href="brand\/favicon-32\.png"/);
   assert.match(html, /class="rail-ghost lx-mark"/);
   const visible = (txt) => txt.replace(/window\.ghostRank|ghostRank\b|Ghost(?:UI|Shell|Chat|Settings|Voice|Look|Dnd)\b|ghostSvg|ghost-[a-z]+|rail-ghost|empty-ghost|head-ghost|user-ghost|GHOST_PATH/g, '');
   for (const f of ['index.html', 'shell.js', 'app.js', 'ui.js']) {
@@ -168,10 +168,8 @@ test('marca LUMENEX: título, ícone, símbolo e nada da marca antiga no que a p
     assert.doesNotMatch(t, /ghost ?rank|gostrank|gosthrank/i, f);
     assert.doesNotMatch(t, /\bghost\b/i, f + ' (Ghost)');
   }
-  for (const f of ['lumenex-mark.svg', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'README.md']) assert.ok(fs.existsSync(path.join(RENDERER, 'brand', f)), f);
-  assert.match(fs.readFileSync(path.join(RENDERER, 'brand', 'README.md'), 'utf8'), /provisório/i, 'arte oficial pendente registrada');
-  const svg = fs.readFileSync(path.join(RENDERER, 'brand', 'favicon.svg'), 'utf8');
-  assert.doesNotMatch(svg, /<script|on[a-z]+=|href=/i, 'SVG sem script nem link');
+  for (const f of ['lumenex-emblem.webp', 'lumenex-icon-128.webp', 'favicon-32.png', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'README.md']) assert.ok(fs.existsSync(path.join(RENDERER, 'brand', f)), f);
+  assert.match(fs.readFileSync(path.join(RENDERER, 'brand', 'README.md'), 'utf8'), /oficial/i, 'arte oficial registrada');
   const man = JSON.parse(fs.readFileSync(path.join(RENDERER, 'manifest.webmanifest'), 'utf8'));
   assert.equal(man.name, 'LUMENEX');
   assert.equal(man.short_name, 'LUMENEX');

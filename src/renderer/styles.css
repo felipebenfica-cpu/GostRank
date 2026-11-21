@@ -2208,3 +2208,10 @@ section.cat.dnd-end {
 .pcard-banner-media { display: block; width: 100%; height: 100%; object-fit: cover; }
 .profile-pop { isolation: isolate; }
 .profile-pop .pcard-close { z-index: 3; }
+
+/* Emblema oficial LUMENEX */
+img.lx-mark { display: block; border-radius: 50%; object-fit: cover; }
+.rail-home .rail-ghost { width: 48px; height: 48px; }
+.rail-home { overflow: hidden; padding: 0; }
+.brand-emblem { display: block; margin: 0 auto 12px; border-radius: 50%; filter: drop-shadow(0 6px 24px rgba(212, 167, 44, 0.25)); }
+.setup-card .brand-emblem { margin-bottom: 16px; }

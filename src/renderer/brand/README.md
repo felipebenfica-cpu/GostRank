@@ -1,12 +1,14 @@
-# Marca LUMENEX — arquivos provisórios
+# Marca LUMENEX — arte oficial
 
-A arte oficial do LUMENEX (L estilizado, emblema com oito heróis de Dota 2, versão detalhada para a abertura)
-**ainda não está no repositório**. Os arquivos desta pasta são **provisórios**, feitos só para o app não ficar
-sem ícone:
+Emblema oficial enviado pelo Felipe em 21/11/2026 ("Emblema LUMENEX — Oito Poderes Lendários").
+O original em tamanho cheio (1254×1254) fica em `brand-src/lumenex-emblema-oficial.png`. Os arquivos
+desta pasta são versões reduzidas do mesmo emblema, geradas a partir dele:
 
-- `lumenex-mark.svg` — "L" geométrico dourado sobre preto, com um traço vermelho. Usado no trilho, no login e na abertura.
-- `favicon.svg` — o mesmo símbolo, para a aba do navegador e o ícone da janela.
-- `icon-192.png`, `icon-512.png` — o mesmo símbolo em PNG para o manifest da versão web (PWA).
+- `lumenex-emblem.webp` (640 px): abertura, login, telas vazias.
+- `lumenex-icon-128.webp`: trilho, painéis e ícones pequenos.
+- `favicon-32.png`, `apple-touch-icon.png` (180), `icon-192.png`, `icon-512.png`: aba do navegador e app instalado (PWA).
+- `build/icon.png` (512): ícone do .exe.
 
-Quando a arte oficial chegar, troque estes arquivos mantendo os mesmos nomes (e o `build/icon.png` do .exe).
-Nada no código depende do desenho em si.
+Pendente: uma versão **simplificada** do emblema para tamanhos muito pequenos (16–32 px). Hoje o
+emblema detalhado é só reduzido. Quando houver, troque `favicon-32.png` e `lumenex-icon-128.webp`
+mantendo os nomes.
