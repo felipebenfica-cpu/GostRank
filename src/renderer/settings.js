@@ -352,6 +352,10 @@
       try { S.lookEditor.destroy(); } catch (e2) { /* opcional */ }
       S.lookEditor = null;
     }
+    if (S.chDnd) {
+      try { S.chDnd.destroy(); } catch (e3) { /* opcional */ }
+      S.chDnd = null;
+    }
   }
 
   function renderAll(focusTitle) {
@@ -1019,7 +1023,7 @@
     var sec = section('Tema');
     var themes = radioGroup('Tema', 'ap-theme', [
       { value: 'dark', label: 'Escuro', render: function () { return h('span', { class: 'gs-theme-swatch', attrs: { 'data-t': 'dark', 'aria-hidden': 'true' } }); } },
-      { value: 'midnight', label: 'Meia-noite', render: function () { return h('span', { class: 'gs-theme-swatch', attrs: { 'data-t': 'midnight', 'aria-hidden': 'true' } }); } },
+      { value: 'midnight', label: 'Meia-Noite (AMOLED)', render: function () { return h('span', { class: 'gs-theme-swatch', attrs: { 'data-t': 'midnight', 'aria-hidden': 'true' } }); } },
       { value: 'light', label: 'Claro', render: function () { return h('span', { class: 'gs-theme-swatch', attrs: { 'data-t': 'light', 'aria-hidden': 'true' } }); } },
     ], a.theme, function (t) { savePref({ appearance: { theme: t } }, err, 'Tema aplicado.'); }, 'gs-themes');
     themes.querySelector('legend').className = 'gs-sr';
@@ -1224,45 +1228,105 @@
       });
     }
 
-    function moveChannel(list, idx, dir) {
-      var a = list[idx];
-      var b = list[idx + dir];
-      if (!a || !b) return;
-      var pa = a.position || 0;
-      var pb = b.position || 0;
-      if (pa === pb) pb = pa + dir;
-      call('updateChannel', { channelId: a.id, position: pb }).then(function (r) {
-        if (!r.ok) { showError(err, r.error); return; }
-        return call('updateChannel', { channelId: b.id, position: pa }).then(function (r2) {
-          result(r2, (a.kind === 'text' ? '#' : '') + a.name + (dir < 0 ? ' subiu.' : ' desceu.'));
-        });
+    // Ordem exibida: categoria (null primeiro) → texto antes de voz → posição.
+    function orderedIn(catId) {
+      return chans.filter(function (c) { return (c.categoryId || null) === catId; }).sort(function (a, b) {
+        if (a.kind !== b.kind) return a.kind === 'text' ? -1 : 1;
+        return byPos(a, b);
       });
     }
+    function chLabel(c) { return (c.kind === 'text' ? '#' : '') + c.name; }
 
-    function moveCategory(idx, dir) {
-      var a = cats[idx];
-      var b = cats[idx + dir];
-      if (!a || !b) return;
-      var pa = a.position || 0;
-      var pb = b.position || 0;
-      if (pa === pb) pb = pa + dir;
-      call('updateCategory', { categoryId: a.id, position: pb }).then(function (r) {
-        if (!r.ok) { showError(err, r.error); return; }
-        return call('updateCategory', { categoryId: b.id, position: pa }).then(function (r2) { result(r2, 'Categoria ' + a.name + (dir < 0 ? ' subiu.' : ' desceu.')); });
+    // Leva o canal `id` para a categoria `catId`, na posição `index` da lista exibida dela, e salva a organização inteira.
+    function placeChannel(id, catId, index) {
+      var moving = chans.filter(function (c) { return c.id === id; })[0];
+      if (!moving) return;
+      var groups = {};
+      [null].concat(cats.map(function (k) { return k.id; })).forEach(function (k) {
+        groups[k] = orderedIn(k).filter(function (c) { return c.id !== id; });
+      });
+      var target = groups[catId] || (groups[catId] = []);
+      index = clampInt(index, 0, target.length);
+      target.splice(index, 0, moving);
+      var layout = [];
+      Object.keys(groups).forEach(function (k) {
+        groups[k].forEach(function (c, i) { layout.push({ id: c.id, categoryId: k === 'null' ? null : k, position: i }); });
+      });
+      var catName = catId ? (cats.filter(function (k) { return k.id === catId; })[0] || {}).name : 'Sem categoria';
+      call('reorderChannels', { serverId: s.id, channels: layout }).then(function (r) {
+        result(r, chLabel(moving) + ' movido para a posição ' + (index + 1) + ' em ' + catName + '.');
+      });
+    }
+    function placeCategory(id, index) {
+      var rest = cats.filter(function (k) { return k.id !== id; });
+      var moving = cats.filter(function (k) { return k.id === id; })[0];
+      if (!moving) return;
+      index = clampInt(index, 0, rest.length);
+      rest.splice(index, 0, moving);
+      var layout = chans.map(function (c) { return { id: c.id, categoryId: c.categoryId || null, position: c.position || 0 }; });
+      call('reorderChannels', { serverId: s.id, channels: layout, categories: rest.map(function (k, i) { return { id: k.id, position: i }; }) }).then(function (r) {
+        result(r, 'Categoria ' + moving.name + ' movida para a posição ' + (index + 1) + '.');
+      });
+    }
+    function clampInt(v, a, b) { v = Math.round(Number(v)); if (!isFinite(v)) v = b; return Math.max(a, Math.min(b, v)); }
+
+    // "Mover para…" (teclado e menu de contexto): mesma ação do arrastar, escolhida numa lista.
+    function moveChannelDialog(c) {
+      var opts = [];
+      [null].concat(cats.map(function (k) { return k.id; })).forEach(function (k) {
+        var name = k ? (cats.filter(function (x) { return x.id === k; })[0] || {}).name : 'Sem categoria';
+        var list = orderedIn(k).filter(function (x) { return x.id !== c.id; });
+        opts.push({ value: (k || '') + '|0', label: name + ' — no início' });
+        list.forEach(function (x, i) { opts.push({ value: (k || '') + '|' + (i + 1), label: name + ' — depois de ' + chLabel(x) }); });
+      });
+      var cur = orderedIn(c.categoryId || null);
+      var curIdx = cur.map(function (x) { return x.id; }).indexOf(c.id);
+      openDialog({
+        title: 'Mover ' + chLabel(c),
+        fields: [{ name: 'to', type: 'select', label: 'Para onde', value: (c.categoryId || '') + '|' + Math.max(0, curIdx), options: opts }],
+        confirmLabel: 'Mover',
+        onSubmit: function (v) {
+          var parts = String(v.to || '').split('|');
+          placeChannel(c.id, parts[0] || null, Number(parts[1]) || 0);
+          return null;
+        },
+      });
+    }
+    function moveCategoryDialog(cat) {
+      var rest = cats.filter(function (k) { return k.id !== cat.id; });
+      var opts = [{ value: '0', label: 'Primeira categoria' }].concat(rest.map(function (k, i) { return { value: String(i + 1), label: 'Depois de ' + k.name }; }));
+      openDialog({
+        title: 'Mover categoria ' + cat.name,
+        fields: [{ name: 'to', type: 'select', label: 'Para onde', value: String(Math.max(0, cats.indexOf(cat))), options: opts }],
+        confirmLabel: 'Mover',
+        onSubmit: function (v) { placeCategory(cat.id, Number(v.to) || 0); return null; },
+      });
+    }
+    function contextMenuFor(el, items, ev) {
+      var UI = window.GhostUI;
+      var r = el.getBoundingClientRect();
+      var x = ev && ev.clientX ? ev.clientX : r.left + 24;
+      var y = ev && ev.clientY ? ev.clientY : r.top + r.height / 2;
+      if (UI && typeof UI.openContextMenu === 'function') UI.openContextMenu(items, x, y, el);
+      else if (items[0]) items[0].action();
+    }
+    function bindMenu(el, items) {
+      el.addEventListener('contextmenu', function (ev) { ev.preventDefault(); contextMenuFor(el, items, ev); });
+      el.addEventListener('keydown', function (ev) {
+        if (ev.target !== el) return;
+        if (ev.key === 'ContextMenu' || (ev.shiftKey && ev.key === 'F10')) { ev.preventDefault(); contextMenuFor(el, items, null); }
       });
     }
 
     function channelRow(c, list, idx) {
-      var label = (c.kind === 'text' ? '#' : '') + c.name;
-      var row = h('li', { class: 'gs-list-row gs-ch-row' },
+      var label = chLabel(c);
+      var row = h('li', { class: 'gs-list-row gs-ch-row', attrs: admin ? { 'data-dnd': 'channel', 'data-id': c.id, 'data-cat': c.categoryId || '', tabindex: '0', 'aria-label': label + ' — clique com o botão direito ou Shift+F10 para mover' } : null },
         h('span', { class: 'gs-ch-kind', attrs: { title: c.kind === 'text' ? 'Canal de texto' : 'Canal de voz' } }, icon(c.kind === 'text' ? 'text' : 'voice', 16), h('span', { class: 'gs-sr', text: c.kind === 'text' ? 'Texto:' : 'Voz:' })),
         h('span', { class: 'gs-list-main' },
           h('span', { class: 'gs-list-name', text: c.name }),
           c.topic ? h('span', { class: 'gs-list-sub', text: c.topic }) : null));
       if (admin) {
         row.appendChild(h('span', { class: 'gs-row-actions' },
-          iconBtn('up', 'Mover ' + label + ' para cima', function () { moveChannel(list, idx, -1); }, 'ch-up-' + c.id, idx === 0),
-          iconBtn('down', 'Mover ' + label + ' para baixo', function () { moveChannel(list, idx, 1); }, 'ch-down-' + c.id, idx === list.length - 1),
           iconBtn('edit', 'Editar ' + label, function () {
             var fields = [{ name: 'name', label: 'Nome do canal', max: 32, value: c.name }];
             if (c.kind === 'text') fields.push({ name: 'topic', label: 'Tópico do canal', max: 1024, multiline: true, value: c.topic || '', placeholder: 'Sobre o que é este canal' });
@@ -1287,6 +1351,7 @@
               call('deleteChannel', c.id).then(function (r) { result(r, label + ' apagado.'); });
             });
           }, 'ch-del-' + c.id)));
+        bindMenu(row, [{ label: 'Mover para…', action: function () { moveChannelDialog(c); } }]);
       }
       return row;
     }
@@ -1297,11 +1362,10 @@
         return byPos(a, b);
       });
       if (!cat && !list.length) return null;
-      var head = h('div', { class: 'gs-cat-head' }, h('h3', { class: 'gs-cat-name', text: cat ? cat.name : 'Sem categoria' }));
+      var head = h('div', { class: 'gs-cat-head', attrs: admin && cat ? { 'data-dnd': 'category', 'data-id': cat.id, tabindex: '0', 'aria-label': 'Categoria ' + cat.name + ' — clique com o botão direito ou Shift+F10 para mover' } : null }, h('h3', { class: 'gs-cat-name', text: cat ? cat.name : 'Sem categoria' }));
       if (admin && cat) {
+        bindMenu(head, [{ label: 'Mover para…', action: function () { moveCategoryDialog(cat); } }]);
         head.appendChild(h('span', { class: 'gs-row-actions' },
-          iconBtn('up', 'Mover categoria ' + cat.name + ' para cima', function () { moveCategory(ci, -1); }, 'cat-up-' + cat.id, ci === 0),
-          iconBtn('down', 'Mover categoria ' + cat.name + ' para baixo', function () { moveCategory(ci, 1); }, 'cat-down-' + cat.id, ci === cats.length - 1),
           iconBtn('plus', 'Criar canal em ' + cat.name, function () { createChannelDialog(cat.id); }, 'cat-add-' + cat.id),
           iconBtn('edit', 'Renomear categoria ' + cat.name, function () {
             openDialog({
@@ -1322,14 +1386,72 @@
             });
           }, 'cat-del-' + cat.id)));
       }
-      var ul = h('ul', { class: 'gs-list gs-ch-list', attrs: { role: 'list' } });
+      var ul = h('ul', { class: 'gs-list gs-ch-list', attrs: { role: 'list', 'data-cat': cat ? cat.id : '' } });
       if (!list.length) ul.appendChild(h('li', { class: 'gs-empty', text: 'Nenhum canal nesta categoria.' }));
       list.forEach(function (c, i) { ul.appendChild(channelRow(c, list, i)); });
-      return h('div', { class: 'gs-cat' }, head, ul);
+      return h('div', { class: 'gs-cat', attrs: { 'data-cat': cat ? cat.id : '' } }, head, ul);
     }
 
-    append(panel, block(null, -1));
-    cats.forEach(function (c, i) { append(panel, block(c, i)); });
+    var listHost = h('div', { class: 'gs-ch-board' + (admin ? ' is-admin' : '') });
+    append(listHost, block(null, -1));
+    cats.forEach(function (c, i) { append(listHost, block(c, i)); });
+    if (admin) panel.appendChild(h('p', { class: 'gs-hint gs-ch-hint', text: 'Arraste canais e categorias para reorganizar (no celular, toque e segure). Pelo teclado: Shift+F10 em um item e "Mover para…".' }));
+    panel.appendChild(listHost);
+
+    // Arrastar e soltar: só ADM; membro comum não recebe nada arrastável.
+    if (admin && window.GhostDnd && typeof window.GhostDnd.attach === 'function') {
+      if (S.chDnd) { try { S.chDnd.destroy(); } catch (e) { /* já destruído */ } }
+      S.chDnd = window.GhostDnd.attach(listHost, {
+        selector: '[data-dnd]',
+        enabled: function () { return isAdmin(); },
+        label: function (el) {
+          var id = el.getAttribute('data-id');
+          if (el.getAttribute('data-dnd') === 'category') { var k = cats.filter(function (x) { return x.id === id; })[0]; return k ? k.name : ''; }
+          var c = chans.filter(function (x) { return x.id === id; })[0]; return c ? chLabel(c) : '';
+        },
+        resolve: function (el, x, y) {
+          var hit = document.elementFromPoint(x, y);
+          if (!hit || !listHost.contains(hit)) return null;
+          var kind = el.getAttribute('data-dnd');
+          if (kind === 'category') {
+            var box = hit.closest('.gs-cat');
+            if (!box || !box.getAttribute('data-cat') || box.contains(el)) return null;
+            var rb = box.getBoundingClientRect();
+            return { el: box, position: y < rb.top + rb.height / 2 ? 'before' : 'after' };
+          }
+          var row = hit.closest('[data-dnd="channel"]');
+          if (row && row !== el) {
+            var rr = row.getBoundingClientRect();
+            return { el: row, position: y < rr.top + rr.height / 2 ? 'before' : 'after' };
+          }
+          var cbox = hit.closest('.gs-cat');
+          if (cbox) { var u = cbox.querySelector('.gs-ch-list'); if (u) return { el: u, position: 'end' }; }
+          return null;
+        },
+        onDrop: function (el, t) {
+          var id = el.getAttribute('data-id');
+          if (el.getAttribute('data-dnd') === 'category') {
+            var refId = t.el.getAttribute('data-cat');
+            var rest = cats.filter(function (k) { return k.id !== id; }).map(function (k) { return k.id; });
+            var i = rest.indexOf(refId);
+            if (i < 0) return;
+            placeCategory(id, t.position === 'after' ? i + 1 : i);
+            return;
+          }
+          if (t.position === 'end') {
+            var cid = t.el.getAttribute('data-cat') || null;
+            placeChannel(id, cid, orderedIn(cid).filter(function (c) { return c.id !== id; }).length);
+            return;
+          }
+          var refCh = t.el.getAttribute('data-id');
+          var catId = t.el.getAttribute('data-cat') || null;
+          var list = orderedIn(catId).filter(function (c) { return c.id !== id; }).map(function (c) { return c.id; });
+          var j = list.indexOf(refCh);
+          if (j < 0) return;
+          placeChannel(id, catId, t.position === 'after' ? j + 1 : j);
+        },
+      });
+    }
   }
 
   function renderMembers(panel) {
@@ -1660,7 +1782,7 @@
   }
 
   var RENDER = {
-    account: renderAccount, profile: renderProfile, privacy: renderPrivacy, voice: renderVoice,
+    account: renderAccount, profile: renderProfile, look: renderLook, privacy: renderPrivacy, voice: renderVoice,
     notifications: renderNotifications, appearance: renderAppearance, keybinds: renderKeybinds,
     overview: renderOverview, channels: renderChannels, members: renderMembers, invites: renderInvites,
     bans: renderBans, delete: renderDelete,
@@ -1798,7 +1920,7 @@
       }
     }
     if (S.kind === 'user' && !me()) { close(true); return; }
-    if (S.lookEditor) { try { S.lookEditor.update(view()); } catch (e) { /* editor */ } }
+    if (S.lookEditor) { try { S.lookEditor.update(view()); } catch (e) { /* editor */ } return; }
     if (isDirty() || S.dialog) return;
     var sig = tabSignature();
     if (sig !== S.sig) renderPanel(false);

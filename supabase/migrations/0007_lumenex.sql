@@ -84,7 +84,7 @@ grant execute on function public.valid_profile_media_path(text, text, boolean) t
 
 alter table public.profiles drop constraint if exists profiles_avatar_path_check;
 alter table public.profiles add constraint profiles_avatar_path_check
-  check (public.valid_profile_media_path(avatar_path, 'avatar', false));
+  check (public.valid_profile_media_path(avatar_path, 'avatar', false)) not valid;
 alter table public.profiles drop constraint if exists profiles_avatar_thumb_path_check;
 alter table public.profiles add constraint profiles_avatar_thumb_path_check
   check (public.valid_profile_media_path(avatar_thumb_path, 'avatar', true));
@@ -414,7 +414,7 @@ begin
   end if;
   -- Antigo (Etapa 6) e novo: <uid>/<uuid>.<ext>, <uid>/<avatar|banner>/<uuid>.<ext> e .thumb.webp.
   if p_name ~ ('^' || u || '/' || u || ext_re)
-     or p_name ~ ('^' || u || '/(avatar|banner)/' || u || '(\.thumb\.webp|' || ext_re || ')') then
+     or p_name ~ ('^' || u || '/(avatar|banner)/' || u || '(\.thumb\.webp$|' || ext_re || ')') then
     return split_part(p_name, '/', 1) = auth.uid()::text;
   elsif p_name ~ ('^g_' || u || '/' || u || ext_re) then
     return coalesce(public.member_role(substr(split_part(p_name, '/', 1), 3)::uuid), '') in ('owner', 'admin');

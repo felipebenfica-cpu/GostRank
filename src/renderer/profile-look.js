@@ -416,10 +416,10 @@
 
     sparks: {
       start: function (st) { st.bolts = []; st.next = 0; },
-      rate: function (t) { return t < INTRO ? 10 : 2.4; },
+      rate: function (t) { return t < INTRO ? 13 : 3; },
       spawn: function (st, n) {
         for (var i = 0; i < n; i++) {
-          if (st.bolts.length > 6) break;
+          if (st.bolts.length > 10) break;
           var a = rnd(0, Math.PI * 2);
           var len = st.ar * rnd(0.6, 1.5);
           var pts = [];
@@ -430,7 +430,13 @@
             var jit = k === 0 ? 0 : rnd(-0.16, 0.16);
             pts.push([st.ax + Math.cos(a + jit) * rr, st.ay + Math.sin(a + jit) * rr]);
           }
-          st.bolts.push({ pts: pts, age: 0, life: rnd(0.14, 0.26) });
+          st.bolts.push({ pts: pts, age: 0, life: rnd(0.22, 0.4) });
+          // Um galho saindo do meio do raio, como descarga real.
+          var mid = pts[(pts.length / 2) | 0];
+          var ba = a + rnd(-0.9, 0.9);
+          var bpts = [mid];
+          for (var bk = 1; bk <= 3; bk++) bpts.push([mid[0] + Math.cos(ba + rnd(-0.3, 0.3)) * st.ar * 0.22 * bk, mid[1] + Math.sin(ba + rnd(-0.3, 0.3)) * st.ar * 0.22 * bk]);
+          st.bolts.push({ pts: bpts, age: 0, life: rnd(0.16, 0.3) });
           for (var q = 0; q < 4; q++) {
             var e = pts[pts.length - 1];
             var sa = rnd(0, Math.PI * 2);
@@ -468,8 +474,8 @@
         }
         // Halo elétrico fraco no avatar enquanto houver raios.
         if (st.bolts.length) {
-          c.globalAlpha = 0.18;
-          var R = st.ar * 1.6;
+          c.globalAlpha = 0.3;
+          var R = st.ar * 1.8;
           c.drawImage(glowSprite('rgba(110,180,255,1)', 48), st.ax - R, st.ay - R, R * 2, R * 2);
         }
         c.globalCompositeOperation = 'source-over';
@@ -519,8 +525,9 @@
     },
 
     mist: {
-      start: function (st) { this.spawn(st, 9); },
-      rate: function (t) { return t < INTRO ? 7 : 2.2; },
+      // A névoa já nasce visível: as primeiras nuvens começam no meio da vida.
+      start: function (st) { this.spawn(st, 14); st.P.forEach(function (p) { p.age = p.life * rnd(0.22, 0.32); }); },
+      rate: function (t) { return t < INTRO ? 11 : 3.2; },
       spawn: function (st, n) {
         for (var i = 0; i < n; i++) {
           var a = rnd(0, Math.PI * 2);
@@ -537,8 +544,13 @@
           p.x += p.vx * dt; p.y += p.vy * dt; p.r += p.grow * dt;
           var k = p.age / p.life;
           var fade = k < 0.3 ? k / 0.3 : 1 - (k - 0.3) / 0.7;
-          c.globalAlpha = fade * (p.dark ? 0.5 : 0.28);
-          c.drawImage(glowSprite(p.dark ? 'rgba(14,8,24,1)' : 'rgba(96,60,140,1)', 48), p.x - p.r, p.y - p.r, p.r * 2, p.r * 2);
+          // Duas camadas: fumaça escura que encobre e um véu violeta que dá forma à névoa.
+          c.globalAlpha = fade * (p.dark ? 0.62 : 0.45);
+          c.drawImage(glowSprite(p.dark ? 'rgba(10,4,20,1)' : 'rgba(132,84,196,1)', 48), p.x - p.r, p.y - p.r, p.r * 2, p.r * 2);
+          if (!p.dark) {
+            c.globalAlpha = fade * 0.22;
+            c.drawImage(glowSprite('rgba(196,160,255,1)', 32), p.x - p.r * 0.45, p.y - p.r * 0.45, p.r * 0.9, p.r * 0.9);
+          }
         }
       },
     },
@@ -633,12 +645,18 @@
         var env = Math.pow(Math.sin(Math.PI * k), 2.2);
         var R = st.ar * (1.25 + env * 1.35);
         c.globalCompositeOperation = 'lighter';
-        c.globalAlpha = env * 0.75 * strength;
-        c.drawImage(glowSprite('rgba(255,206,96,1)', 64), st.ax - R, st.ay - R, R * 2, R * 2);
-        c.globalAlpha = env * 0.4 * strength;
+        c.globalAlpha = Math.min(1, env * 0.95 * strength);
+        c.drawImage(glowSprite('rgba(255,200,80,1)', 64), st.ax - R, st.ay - R, R * 2, R * 2);
+        c.globalAlpha = env * 0.7 * strength;
         c.strokeStyle = 'rgba(255,236,190,1)';
-        c.lineWidth = 1.6;
+        c.lineWidth = 2.2;
         c.beginPath(); c.arc(st.ax, st.ay, st.ar * (1.08 + env * 0.25), 0, Math.PI * 2); c.stroke();
+        // Onda curta que sai a cada batida.
+        var kr = k < 0.5 ? k / 0.5 : 1;
+        c.globalAlpha = (1 - kr) * 0.55 * strength;
+        c.strokeStyle = 'rgba(255,214,120,1)';
+        c.lineWidth = 2 * (1 - kr) + 0.4;
+        c.beginPath(); c.arc(st.ax, st.ay, st.ar * (1.1 + kr * 1.1), 0, Math.PI * 2); c.stroke();
         c.globalCompositeOperation = 'source-over';
         st.alive = strength > 0.01;
       },

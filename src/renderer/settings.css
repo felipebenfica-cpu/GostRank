@@ -425,3 +425,25 @@ html.gs-open { overflow: hidden; }
 
 .gs-root .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .gs-section-tight { padding-top: var(--space-4); }
+
+/* Etapa 7 — reorganizar canais por arrastar (só ADM). Indicador dourado suave na posição de destino. */
+.gs-ch-board.is-admin [data-dnd] { cursor: grab; position: relative; touch-action: pan-y; }
+.gs-ch-board.is-admin [data-dnd]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+body.is-dnd .gs-ch-board.is-admin [data-dnd] { cursor: grabbing; }
+.gs-ch-board .is-drag-source { opacity: 0.45; }
+.gs-ch-board .gs-cat { position: relative; }
+.gs-ch-board .dnd-before::before,
+.gs-ch-board .dnd-after::after {
+  content: ""; position: absolute; left: 6px; right: 6px; height: 3px; border-radius: 3px;
+  background: var(--accent); box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 60%, transparent);
+  pointer-events: none; z-index: 2;
+}
+.gs-ch-board .dnd-before::before { top: -2px; }
+.gs-ch-board .dnd-after::after { bottom: -2px; }
+.gs-ch-board .gs-ch-list.dnd-end { outline: 2px dashed color-mix(in srgb, var(--accent) 70%, transparent); outline-offset: 2px; border-radius: var(--radius-sm, 6px); }
+@media (prefers-reduced-motion: no-preference) {
+  .gs-ch-board .dnd-before::before, .gs-ch-board .dnd-after::after { animation: gs-dnd-in 140ms ease-out; }
+}
+@keyframes gs-dnd-in { from { opacity: 0; transform: scaleX(0.6); } to { opacity: 1; transform: none; } }
+.gs-ch-hint { margin: var(--space-2, 8px) 0 var(--space-4, 16px); }
+.gs-look-host { margin-top: var(--space-4, 16px); }

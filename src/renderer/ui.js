@@ -5,7 +5,7 @@
   'use strict';
 
   var SVG_NS = 'http://www.w3.org/2000/svg';
-  var GHOST_PATH = 'M6.5 3.5h4.6v12.2h8.2l-2.4 4.8H6.5z'; // ícone 'ghost' = L do LUMENEX
+  var GHOST_PATH = 'M6.5 3.5h4.6v12.2h8.2l-2.4 4.8H6.5z'; // ícone 'mark' = L do LUMENEX
 
   // Cada ícone: lista de [tag, atributos]. Traço herdado de .btn-icon / .channel-icon.
   var ICONS = {
@@ -46,7 +46,7 @@
     folder: [['path', { d: 'M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z' }]],
     link: [['path', { d: 'M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1' }], ['path', { d: 'M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1' }]],
     inbox: [['path', { d: 'M3 13l3-8h12l3 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z' }], ['path', { d: 'M3 13h5l1 3h6l1-3h5' }]],
-    ghost: [['path', { d: GHOST_PATH }]]
+    mark: [['path', { d: GHOST_PATH }]]
   };
 
   var STATUS_TEXT = { online: 'Online', idle: 'Ausente', dnd: 'Não perturbe', offline: 'Offline', invisible: 'Invisível' };

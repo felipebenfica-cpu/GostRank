@@ -888,10 +888,10 @@
       userChip.setAttribute('aria-label', 'Seu status: ' + (U.STATUS_TEXT[st] || 'Online') + '. ' + nameText + (m.username ? ' (@' + m.username + ')' : '') + '. Abrir menu de status');
       userChip.disabled = false;
     } else {
-      var ghost = el('span', 'avatar avatar-sm user-ghost');
-      ghost.setAttribute('aria-hidden', 'true');
-      ghost.appendChild(U.ghostSvg(20));
-      slot.appendChild(ghost);
+      var markEl = el('span', 'avatar avatar-sm user-ghost');
+      markEl.setAttribute('aria-hidden', 'true');
+      markEl.appendChild(U.ghostSvg(20));
+      slot.appendChild(markEl);
       if (status === 'unconfigured') { nameText = 'LUMENEX'; sub = 'Contas ainda não configuradas'; }
       else if (status === 'signed_out') { nameText = 'Sem conta'; sub = 'Modo local'; }
       else { nameText = 'LUMENEX'; sub = ''; }
@@ -977,7 +977,7 @@
   var btnMembers = $('btn-members');
   var headSearch = $('head-search');
 
-  var PAGE_ICON = { friends: 'friends', mmr: 'on_track', ranking: 'trophy', chat: 'hash', dm: 'at', voice: 'speaker', empty: 'ghost' };
+  var PAGE_ICON = { friends: 'friends', mmr: 'on_track', ranking: 'trophy', chat: 'hash', dm: 'at', voice: 'speaker', empty: 'mark' };
 
   function renderHeader(page) {
     var s = sel();
@@ -986,7 +986,7 @@
     if (page === 'dm') {
       var d = dmById(s.dmId);
       headIcon.appendChild(U.avatarEl(d.user, 'xs', { status: presenceOf(d.user.id) }));
-    } else if (ic === 'ghost') {
+    } else if (ic === 'mark') {
       headIcon.appendChild(U.ghostSvg(22, 'head-ghost'));
     } else {
       headIcon.appendChild(icon(ic, 22, 'channel-icon'));
