@@ -100,7 +100,7 @@ test('prefs: padrões, mescla validada, silenciar e arquivo estranho não quebra
   let saved = null;
   const store = { load: () => ({ appearance: { theme: 'neon', fontScale: 110 }, muted: ['x'], _nav: { mode: 'home' } }), save: (o) => { saved = o; } };
   const p = createPrefs({ store });
-  assert.equal(p.get().appearance.theme, 'dark');
+  assert.equal(p.get().appearance.theme, 'frostivus');
   assert.equal(p.get().appearance.fontScale, 110);
   assert.deepEqual(p.get().muted, []);
   assert.deepEqual(p.getNav(), { mode: 'home' });

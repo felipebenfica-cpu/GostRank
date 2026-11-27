@@ -15,14 +15,14 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { build: buildPreviewHtml, RENDERER_CSS, RENDERER_JS, RENDERER_HEAD_JS, RENDERER_ASSETS } = require('./build-preview');
+const { build: buildPreviewHtml, RENDERER_CSS, RENDERER_JS, RENDERER_HEAD_JS, RENDERER_TAIL_JS, RENDERER_ASSETS } = require('./build-preview');
 
 const ROOT = path.join(__dirname, '..');
 const RENDERER = path.join(ROOT, 'src', 'renderer');
 const PREVIEW = path.join(ROOT, 'preview');
 const PREVIEW_JS = ['fake-livekit.js', 'mock-bridge.js'];
 const LIVEKIT_UMD = path.join(ROOT, 'node_modules', 'livekit-client', 'dist', 'livekit-client.umd.js');
-const APP_FILES = [...RENDERER_CSS, ...RENDERER_HEAD_JS, ...RENDERER_JS, 'app.js', ...RENDERER_ASSETS];
+const APP_FILES = [...RENDERER_CSS, ...RENDERER_HEAD_JS, ...RENDERER_JS, 'app.js', ...RENDERER_TAIL_JS, ...RENDERER_ASSETS];
 
 // Metadados da versão web (compartilhamento de link e app instalado/PWA). Só a web usa o manifest:
 // no Electron a CSP não tem manifest-src e o app já é "instalado".
@@ -86,6 +86,9 @@ function headersFile(origin) {
     '  X-Content-Type-Options: nosniff',
     '  X-Frame-Options: DENY',
     '  Permissions-Policy: camera=(self), microphone=(self), display-capture=(self), geolocation=()',
+    '',
+    '/frostivus/*',
+    '  Cache-Control: public, max-age=604800, stale-while-revalidate=2592000',
     '',
   ].join('\n');
 }

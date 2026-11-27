@@ -173,6 +173,7 @@
 
     if (configured && view.summary) renderDashboard();
     renderAccount();
+    renderRecovery();
     renderUpdate();
     if (window.GhostShell) {
       try { window.GhostShell.render(view); } catch (e) { console.error('[tela] casca:', e && e.name); }
@@ -619,6 +620,7 @@
     signup: { dlg: $('dlg-signup'), form: $('form-signup'), email: $('signup-email'), pw: $('signup-password'), pw2: $('signup-confirm'), error: $('signup-error'), submit: $('signup-submit'), label: 'Criar conta', busy: 'Criando…', fields: $('signup-fields'), done: $('signup-done'), cancel: $('signup-cancel'), next: $('signup-to-signin') },
     recover: { dlg: $('dlg-recover'), form: $('form-recover'), email: $('recover-email'), error: $('recover-error'), submit: $('recover-submit'), label: 'Enviar link', busy: 'Enviando…', fields: $('recover-fields'), done: $('recover-done'), cancel: $('recover-cancel'), next: $('recover-to-signin') },
     account: { dlg: $('dlg-account'), form: $('form-account'), nick: $('account-nick'), email: $('account-email'), error: $('account-error'), saved: $('account-saved'), submit: $('account-save'), label: 'Salvar', busy: 'Salvando…', signout: $('btn-signout'), del: $('btn-delete-account') },
+    newpw: { dlg: $('dlg-newpw'), form: $('form-newpw'), pw: $('newpw-password'), pw2: $('newpw-confirm'), error: $('newpw-error'), submit: $('newpw-submit'), label: 'Salvar nova senha', busy: 'Salvando…' },
     del: { dlg: $('dlg-delete-account'), form: $('form-delete-account'), error: $('delete-account-error'), submit: $('delete-account-submit'), label: 'Sim, apagar minha conta', busy: 'Apagando…' }
   };
 
@@ -798,9 +800,101 @@
     if (!email) return failField(d, d.email, 'Informe o seu e-mail.');
     if (!emailLooksValid(email)) return failField(d, d.email, 'Informe um e-mail válido.');
     setBusy(d, true);
-    call(function () { return bridge.recover({ email: email }); }).then(function () {
+    call(function () { return bridge.recover({ email: email }); }).then(function (res) {
       setBusy(d, false);
-      finishDone(d);
+      var err = applyResult(res);
+      if (err) failField(d, d.email, err);
+      else finishDone(d);
+    });
+  });
+
+  // Nova senha (o app foi aberto pelo link do e-mail)
+  var resetShown = '';
+  function updateStrength() {
+    var info = authInfo();
+    var r = window.lxPasswordStrength(ac.newpw.pw.value, info && info.recovery && info.recovery.email);
+    $('newpw-meter').value = r.score;
+    $('newpw-strength-text').textContent = (r.label ? r.label + '. ' : '') + r.tip;
+  }
+
+  function renderRecovery() {
+    var d = ac.newpw;
+    var info = authInfo();
+    var rec = info && info.recovery;
+    var status = rec ? rec.status : '';
+    if (!status) {
+      resetShown = '';
+      if (d.dlg.open) d.dlg.close();
+      return;
+    }
+    if (status === resetShown) return;
+    resetShown = status;
+    show($('newpw-checking'), status === 'checking');
+    show($('newpw-invalid'), status === 'invalid');
+    show($('newpw-done'), status === 'done');
+    show($('newpw-fields'), status === 'ready');
+    show(d.submit, status === 'ready');
+    show($('newpw-again'), status === 'invalid');
+    show($('newpw-signin'), status === 'done');
+    $('newpw-cancel').textContent = status === 'ready' ? 'Cancelar' : 'Fechar';
+    if (status === 'ready') {
+      clearErrors(d);
+      setBusy(d, false);
+      wipePasswords(d);
+      $('newpw-email').textContent = rec.email ? 'Conta: ' + rec.email : 'Escolha a senha nova da sua conta.';
+      updateStrength();
+    }
+    if (status === 'done') {
+      wipePasswords(d);
+      $('newpw-done').textContent = rec.sessionsRevoked
+        ? 'Senha alterada. Por segurança, as sessões abertas foram encerradas. Entre com a senha nova.'
+        : 'Senha alterada. Não deu para encerrar as sessões de outros aparelhos; entre com a senha nova.';
+    }
+    if (!d.dlg.open) {
+      Object.keys(ac).forEach(function (k) { if (ac[k] !== d && ac[k].dlg.open) ac[k].dlg.close(); });
+      openDialog(d.dlg);
+    }
+    if (status === 'ready') d.pw.focus();
+    else if (status === 'invalid') $('newpw-again').focus();
+    else if (status === 'done') $('newpw-signin').focus();
+  }
+
+  function leaveRecovery(next) {
+    call(function () { return bridge.dismissRecovery(); }).then(function (res) {
+      applyResult(res);
+      if (next) openAuthDialog(next, next.email);
+    });
+  }
+  ac.newpw.pw.addEventListener('input', updateStrength);
+  $('newpw-again').addEventListener('click', function () { leaveRecovery(ac.recover); });
+  $('newpw-signin').addEventListener('click', function () { leaveRecovery(ac.signin); });
+  // Esc ou Cancelar: descarta o link aberto
+  ac.newpw.dlg.addEventListener('close', function () {
+    var info = authInfo();
+    if (resetShown && info && info.recovery) leaveRecovery(null);
+  });
+
+  ac.newpw.form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var d = ac.newpw;
+    if ($('newpw-fields').hidden) return;
+    clearErrors(d);
+    var password = d.pw.value;
+    if (password.length < 10) return failField(d, d.pw, 'A senha precisa ter pelo menos 10 caracteres.');
+    if (password !== d.pw2.value) {
+      d.pw2.value = '';
+      return failField(d, d.pw2, 'As senhas não conferem.');
+    }
+    setBusy(d, true);
+    call(function () { return bridge.resetPassword({ password: password }); }).then(function (res) {
+      setBusy(d, false);
+      var err = applyResult(res);
+      if (!err) return;
+      // Link inválido troca a tela inteira; o resto (senha fraca, igual à atual, rede) fica no formulário.
+      call(function () { return bridge.getView(); }).then(function (v) {
+        applyResult(v);
+        if (!$('newpw-fields').hidden) failField(d, d.pw, err);
+      });
     });
   });
 

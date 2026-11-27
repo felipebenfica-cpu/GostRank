@@ -55,6 +55,11 @@ function plainPreview(body, nameOf) {
   return s.length > 140 ? `${s.slice(0, 139)}…` : s;
 }
 
+const { ACCOUNT_THEMES } = require('../core/themes');
+
+// Para onde o link do e-mail de recuperação leva (também para quem pede pelo app de Windows).
+const RECOVERY_REDIRECT_URL = 'https://lumenex.netlify.app/';
+
 function createAppServices({
   config = null,
   fetchImpl = null,
@@ -116,7 +121,10 @@ function createAppServices({
 
   if (config) {
     try {
-      const auth = createAuthClient({ fetchImpl: fetchImpl || undefined, supabaseUrl: config.supabaseUrl, anonKey: config.anonKey });
+      const auth = createAuthClient({
+        fetchImpl: fetchImpl || undefined, supabaseUrl: config.supabaseUrl, anonKey: config.anonKey,
+        recoveryRedirectUrl: RECOVERY_REDIRECT_URL,
+      });
       session = createSessionManager({ store: sessionStore || { load: () => null, save: () => {}, clear: () => {} }, auth });
       const getAccessToken = async () => {
         const s = await session.get();
@@ -798,7 +806,7 @@ function createAppServices({
       const before = prefs.get().appearance.theme;
       const next = prefs.update(patch);
       // Etapa 7: tema também na conta (sem bloquear a tela; falha calada).
-      if (next.appearance.theme !== before && mode === 'v3' && signedIn() && social) {
+      if (next.appearance.theme !== before && ACCOUNT_THEMES.includes(next.appearance.theme) && mode === 'v3' && signedIn() && social) {
         social.saveTheme(next.appearance.theme).catch(() => {});
       }
       emit();

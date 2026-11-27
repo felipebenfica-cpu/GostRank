@@ -981,7 +981,7 @@
     var p = view().prefs || {};
     return {
       notifications: Object.assign({ desktop: true, sounds: true, mentionsOnly: false }, p.notifications || {}),
-      appearance: Object.assign({ theme: 'dark', fontScale: 100, compact: false }, p.appearance || {}),
+      appearance: Object.assign({ theme: window.lxThemes.fallback, fontScale: 100, compact: false }, p.appearance || {}),
     };
   }
 
@@ -1021,14 +1021,25 @@
     var a = prefs().appearance;
     var err = errorBox();
     var sec = section('Tema');
-    var themes = radioGroup('Tema', 'ap-theme', [
-      { value: 'dark', label: 'Escuro', render: function () { return h('span', { class: 'gs-theme-swatch', attrs: { 'data-t': 'dark', 'aria-hidden': 'true' } }); } },
-      { value: 'midnight', label: 'Meia-Noite (AMOLED)', render: function () { return h('span', { class: 'gs-theme-swatch', attrs: { 'data-t': 'midnight', 'aria-hidden': 'true' } }); } },
-      { value: 'light', label: 'Claro', render: function () { return h('span', { class: 'gs-theme-swatch', attrs: { 'data-t': 'light', 'aria-hidden': 'true' } }); } },
-    ], a.theme, function (t) { savePref({ appearance: { theme: t } }, err, 'Tema aplicado.'); }, 'gs-themes');
+    var themes = radioGroup('Tema', 'ap-theme', window.lxThemes.list.map(function (t) {
+      return { value: t.id, label: t.label, render: function () { return h('span', { class: 'gs-theme-swatch', attrs: { 'data-t': t.id, 'aria-hidden': 'true' } }); } };
+    }), a.theme, function (t) { savePref({ appearance: { theme: t } }, err, 'Tema aplicado.'); }, 'gs-themes');
     themes.querySelector('legend').className = 'gs-sr';
     sec.appendChild(themes);
     panel.appendChild(sec);
+
+    var active = window.lxThemes.get(a.theme);
+    if (active && active.scene && window.lxFrostivus) {
+      var xsec = section('Efeitos do cenário', 'Neve, brasas, névoa e paralaxe. Vale só neste aparelho. Se o sistema pede menos movimento, a cena fica parada.');
+      var fx = radioGroup('Efeitos do cenário', 'ap-fx', [
+        { value: 'full', label: 'Completos' },
+        { value: 'low', label: 'Reduzidos' },
+        { value: 'off', label: 'Desligados' },
+      ], window.lxFrostivus.getEffects(), function (v) { window.lxFrostivus.setEffects(v); }, 'gs-fx');
+      fx.querySelector('legend').className = 'gs-sr';
+      xsec.appendChild(fx);
+      panel.appendChild(xsec);
+    }
 
     var fsec = section('Tamanho da fonte do chat');
     var sample = h('div', { class: 'gs-sample' + (a.compact ? ' is-compact' : '') });

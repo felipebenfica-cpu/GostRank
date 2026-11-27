@@ -265,7 +265,8 @@
 
   function applyAppearance() {
     var ap = (view && view.prefs && view.prefs.appearance) || {};
-    var theme = { dark: 1, midnight: 1, light: 1 }[ap.theme] ? ap.theme : 'dark';
+    var themes = window.lxThemes;
+    var theme = themes.has(ap.theme) ? ap.theme : themes.fallback;
     var root = document.documentElement;
     if (root.dataset.theme !== theme) root.dataset.theme = theme;
     var scale = typeof ap.fontScale === 'number' && ap.fontScale >= 80 && ap.fontScale <= 130 ? ap.fontScale : 100;

@@ -166,6 +166,27 @@ shim.setExposeHook((api) => ({
 // O mesmo preload do Electron: define window.ghostRank com todos os métodos.
 require('../preload/preload');
 
+// ---------------- Link de recuperação de senha ----------------
+// Os tokens chegam no fragmento (#...), que não vai para o servidor. Tiramos da barra de endereço
+// e do histórico antes de qualquer outra coisa.
+function takeRecoveryLink() {
+  const loc = window.location;
+  if (!loc || !loc.hash || loc.hash.length < 2) return null;
+  const p = new URLSearchParams(loc.hash.slice(1));
+  const isRecovery = p.get('type') === 'recovery' && (p.has('access_token') || p.has('token_hash'));
+  const isError = p.has('error_code') || p.has('error_description');
+  if (!isRecovery && !isError) return null;
+  try { window.history.replaceState(null, '', loc.pathname); } catch { loc.hash = ''; }
+  if (isError) return { error: true };
+  return { accessToken: p.get('access_token'), tokenHash: p.get('token_hash') };
+}
+function handleRecoveryLink() {
+  const link = takeRecoveryLink();
+  if (link && services.account.beginRecovery) services.account.beginRecovery(link).catch(() => {});
+}
+handleRecoveryLink();
+window.addEventListener('hashchange', handleRecoveryLink);
+
 // ---------------- Ciclo de vida ----------------
 askNotificationPermissionOnce();
 document.addEventListener('visibilitychange', () => {

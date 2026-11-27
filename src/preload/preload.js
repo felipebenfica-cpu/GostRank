@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld('ghostRank', {
   signIn: (data) => inv('gr:auth:signIn', data),
   signOut: () => inv('gr:auth:signOut'),
   recover: (data) => inv('gr:auth:recover', data),
+  resetPassword: (data) => inv('gr:auth:resetPassword', data),
+  dismissRecovery: () => inv('gr:auth:dismissRecovery'),
   updateProfile: (data) => inv('gr:profile:update', data),
   deleteAccount: () => inv('gr:account:delete', { confirm: true }),
   // Grupo antigo (aliases: no banco novo agem no servidor selecionado)

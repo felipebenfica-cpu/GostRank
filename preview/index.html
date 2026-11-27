@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR" data-theme="dark">
+<html lang="pt-BR" data-theme="frostivus">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -10,12 +10,14 @@
   <title>LUMENEX (prévia)</title>
   <meta name="lx-asset-base" content="../src/renderer/">
   <link rel="icon" href="../src/renderer/brand/favicon-32.png" sizes="32x32" type="image/png">
+  <script src="../src/renderer/themes.js"></script>
   <script src="../src/renderer/theme-boot.js"></script>
   <link rel="stylesheet" href="../src/renderer/styles.css">
   <link rel="stylesheet" href="../src/renderer/chat.css">
   <link rel="stylesheet" href="../src/renderer/settings.css">
   <link rel="stylesheet" href="../src/renderer/voice.css">
   <link rel="stylesheet" href="../src/renderer/profile-look.css">
+  <link rel="stylesheet" href="../src/renderer/frostivus.css">
 </head>
 <body>
   <a class="skip-link" href="#conteudo">Ir para o conteúdo</a>
@@ -737,6 +739,49 @@
     </form>
   </dialog>
 
+  <!-- Diálogo: nova senha (aberto pelo link do e-mail) -->
+  <dialog id="dlg-newpw" class="dialog" aria-labelledby="dlg-newpw-title">
+    <form id="form-newpw" class="form" novalidate>
+      <img class="brand-emblem" src="../src/renderer/brand/lumenex-emblem.webp" width="112" height="112" alt="LUMENEX" decoding="async">
+      <h2 id="dlg-newpw-title" class="dialog-title">Criar nova senha</h2>
+      <p id="newpw-checking" class="help" role="status" hidden>Conferindo o seu link…</p>
+      <p id="newpw-invalid" class="notice" role="alert" tabindex="-1" hidden>Este link é inválido, já foi usado ou expirou. Peça um novo para continuar.</p>
+      <p id="newpw-done" class="notice" role="status" tabindex="-1" hidden></p>
+      <div id="newpw-fields" class="form" hidden>
+        <p id="newpw-email" class="help"></p>
+        <div class="field">
+          <label for="newpw-password">Nova senha</label>
+          <div class="pw-wrap">
+            <input id="newpw-password" type="password" autocomplete="new-password" spellcheck="false" autocapitalize="off" maxlength="72" aria-describedby="newpw-strength-text" required>
+            <button class="pw-toggle" type="button" aria-pressed="false" aria-controls="newpw-password" aria-label="Mostrar senha">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><line class="eye-off" x1="4" y1="4" x2="20" y2="20"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="pw-strength">
+          <meter id="newpw-meter" class="pw-meter" min="0" max="4" low="2" high="3" optimum="4" value="0" aria-label="Segurança da senha"></meter>
+          <p id="newpw-strength-text" class="help" aria-live="polite">Use no mínimo 10 caracteres.</p>
+        </div>
+        <div class="field">
+          <label for="newpw-confirm">Confirmar nova senha</label>
+          <div class="pw-wrap">
+            <input id="newpw-confirm" type="password" autocomplete="new-password" spellcheck="false" autocapitalize="off" maxlength="72" required>
+            <button class="pw-toggle" type="button" aria-pressed="false" aria-controls="newpw-confirm" aria-label="Mostrar senha">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><line class="eye-off" x1="4" y1="4" x2="20" y2="20"/></svg>
+            </button>
+          </div>
+        </div>
+        <p id="newpw-error" class="form-error" role="alert" hidden></p>
+      </div>
+      <div class="dialog-actions">
+        <button id="newpw-cancel" class="btn" type="button" data-close>Cancelar</button>
+        <button id="newpw-submit" class="btn btn-primary" type="submit" hidden>Salvar nova senha</button>
+        <button id="newpw-again" class="btn btn-primary" type="button" hidden>Pedir novo link</button>
+        <button id="newpw-signin" class="btn btn-primary" type="button" hidden>Entrar</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Diálogo: minha conta -->
   <dialog id="dlg-account" class="dialog" aria-labelledby="dlg-account-title">
     <form id="form-account" class="form" novalidate>
@@ -805,6 +850,7 @@
 
   <script src="fake-livekit.js"></script>
   <script src="mock-bridge.js"></script>
+  <script src="../src/renderer/password-strength.js"></script>
   <script src="../src/renderer/ui.js"></script>
   <script src="../src/renderer/dnd.js"></script>
   <script src="../src/renderer/profile-look.js"></script>
@@ -814,5 +860,6 @@
   <script src="../src/renderer/voice.js"></script>
   <script src="../src/renderer/shell.js"></script>
   <script src="../src/renderer/app.js"></script>
+  <script src="../src/renderer/frostivus.js"></script>
 </body>
 </html>

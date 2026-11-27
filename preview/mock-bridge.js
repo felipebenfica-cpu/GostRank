@@ -476,9 +476,9 @@
     notifications: { desktop: true, sounds: true, mentionsOnly: false },
     muted: ['c:' + chClips.id],
     voice: { inputDeviceId: 'default', outputDeviceId: 'default', mode: 'vad', pttKey: 'KeyV', sensitivity: -50, autoSensitivity: true, noiseSuppression: true, echoCancellation: true, inputVolume: 100, outputVolume: 100, cameraDeviceId: 'default' },
-    appearance: { theme: 'dark', fontScale: 100, compact: false }
+    appearance: { theme: 'frostivus', fontScale: 100, compact: false }
   };
-  if (params.get('theme') && { dark: 1, midnight: 1, light: 1 }[params.get('theme')]) prefs.appearance.theme = params.get('theme');
+  if (params.get('theme') && { frostivus: 1, dark: 1, midnight: 1, light: 1 }[params.get('theme')]) prefs.appearance.theme = params.get('theme');
   if (scenario === 'midnight') prefs.appearance.theme = 'midnight';
 
   var myProfile = users[ME];
@@ -1062,6 +1062,8 @@
       }, 300);
     },
 
+    resetPassword: function () { return Promise.resolve({ ok: true }); },
+    dismissRecovery: function () { return Promise.resolve({ ok: true }); },
     recover: function (data) {
       return delay(function () {
         var email = String((data && data.email) || '').trim().toLowerCase();
@@ -1762,7 +1764,7 @@
         });
         if (Array.isArray(partial.muted)) prefs.muted = partial.muted.filter(function (x) { return typeof x === 'string'; }).slice(0, 500);
         var ap = prefs.appearance;
-        if ({ dark: 1, midnight: 1, light: 1 }[ap.theme] !== 1) ap.theme = 'dark';
+        if ({ frostivus: 1, dark: 1, midnight: 1, light: 1 }[ap.theme] !== 1) ap.theme = 'frostivus';
         ap.fontScale = Math.max(80, Math.min(130, Number(ap.fontScale) || 100));
         ap.compact = !!ap.compact;
         return ok();

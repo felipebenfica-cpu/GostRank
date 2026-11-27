@@ -20,11 +20,13 @@ function replaceOnce(text, from, to) {
 }
 
 // Scripts e estilos da tela que a prévia carrega direto de src/renderer/
-const RENDERER_CSS = ['styles.css', 'chat.css', 'settings.css', 'voice.css', 'profile-look.css'];
-const RENDERER_JS = ['ui.js', 'dnd.js', 'profile-look.js', 'emoji-data.js', 'chat.js', 'settings.js', 'voice.js', 'shell.js'];
+const RENDERER_CSS = ['styles.css', 'chat.css', 'settings.css', 'voice.css', 'profile-look.css', 'frostivus.css'];
+const RENDERER_JS = ['password-strength.js', 'ui.js', 'dnd.js', 'profile-look.js', 'emoji-data.js', 'chat.js', 'settings.js', 'voice.js', 'shell.js'];
+// Scripts carregados depois do app.js
+const RENDERER_TAIL_JS = ['frostivus.js'];
 // Arquivos da tela que não são scripts do app (carregados no <head>) e a pasta da marca
-const RENDERER_HEAD_JS = ['theme-boot.js'];
-const RENDERER_ASSETS = ['brand/favicon-32.png', 'brand/lumenex-emblem.webp', 'brand/lumenex-icon-128.webp', 'brand/icon-192.png', 'brand/icon-512.png', 'brand/apple-touch-icon.png', 'manifest.webmanifest'];
+const RENDERER_HEAD_JS = ['themes.js', 'theme-boot.js'];
+const RENDERER_ASSETS = ['brand/favicon-32.png', 'brand/lumenex-emblem.webp', 'brand/lumenex-icon-128.webp', 'brand/icon-192.png', 'brand/icon-512.png', 'brand/apple-touch-icon.png', 'manifest.webmanifest', 'frostivus/cena.webp', 'frostivus/cena-960.webp', 'frostivus/frente.webp', 'frostivus/frente-960.webp'];
 
 function build() {
   let html = fs.readFileSync(src, 'utf8');
@@ -44,6 +46,9 @@ function build() {
     html = replaceOnce(html, `  <script src="${name}"></script>`, `  <script src="../src/renderer/${name}"></script>`);
   }
   html = replaceOnce(html, '  <script src="app.js"></script>', '  <script src="../src/renderer/app.js"></script>');
+  for (const name of RENDERER_TAIL_JS) {
+    html = replaceOnce(html, `  <script src="${name}"></script>`, `  <script src="../src/renderer/${name}"></script>`);
+  }
   return html;
 }
 
@@ -63,4 +68,4 @@ if (process.argv.includes('--check')) {
 
 if (require.main === module) main();
 
-module.exports = { build, RENDERER_CSS, RENDERER_JS, RENDERER_HEAD_JS, RENDERER_ASSETS };
+module.exports = { build, RENDERER_CSS, RENDERER_JS, RENDERER_HEAD_JS, RENDERER_TAIL_JS, RENDERER_ASSETS };

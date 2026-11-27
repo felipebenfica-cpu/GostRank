@@ -12,6 +12,8 @@ const MESSAGES = Object.freeze({
   bad_response: 'O servidor de contas enviou uma resposta inesperada. Tente novamente.',
   unconfigured: 'Contas indisponíveis neste computador.',
   unauthenticated: 'Sua sessão expirou. Entre novamente.',
+  same_password: 'A nova senha precisa ser diferente da atual.',
+  link_invalid: 'Este link é inválido, já foi usado ou expirou. Peça um novo.',
   invalid: 'Dados inválidos.',
 });
 
@@ -99,7 +101,7 @@ function errorCodeOf(data) {
   return typeof c === 'string' ? c : '';
 }
 
-function createAuthClient({ fetchImpl, supabaseUrl, anonKey, now = () => Date.now(), timeoutMs = 10000 } = {}) {
+function createAuthClient({ fetchImpl, supabaseUrl, anonKey, now = () => Date.now(), timeoutMs = 10000, recoveryRedirectUrl = null } = {}) {
   const request = createRequester({ fetchImpl, supabaseUrl, anonKey, timeoutMs });
 
   function toSession(data) {
@@ -169,7 +171,9 @@ function createAuthClient({ fetchImpl, supabaseUrl, anonKey, now = () => Date.no
 
   async function recover({ email }) {
     try {
-      await request('/auth/v1/recover', { method: 'POST', body: { email } });
+      // redirect_to precisa estar na lista "Redirect URLs" do Supabase; fora dela, vale o "Site URL".
+      const q = recoveryRedirectUrl ? `?redirect_to=${encodeURIComponent(recoveryRedirectUrl)}` : '';
+      await request(`/auth/v1/recover${q}`, { method: 'POST', body: { email } });
     } catch (err) {
       // Só falha de conexão aparece; respostas do servidor nunca revelam se a conta existe.
       if (err instanceof AuthError && (err.code === 'network' || err.code === 'timeout')) throw err;
@@ -183,7 +187,50 @@ function createAuthClient({ fetchImpl, supabaseUrl, anonKey, now = () => Date.no
     return { ok: true };
   }
 
-  return { signUp, signIn, refresh, recover, signOut };
+  // ---------------- Redefinição de senha (o token de recuperação nunca vai para o disco) ----------------
+  /** 4xx num passo da recuperação = link que não vale mais; o resto é falha temporária. */
+  function recoveryFailure(status, data) {
+    const code = errorCodeOf(data);
+    if (code === 'same_password') return new AuthError('same_password');
+    if (code === 'weak_password') return new AuthError('weak_password');
+    if (status === 401 || status === 403 || ['otp_expired', 'session_not_found', 'session_expired', 'bad_jwt'].includes(code)) {
+      return new AuthError('link_invalid');
+    }
+    return new AuthError('bad_response');
+  }
+
+  /** Link no formato token_hash: só é consumido aqui, quando a pessoa envia a senha nova. */
+  async function verifyRecovery(tokenHash) {
+    const { status, data } = await request('/auth/v1/verify', {
+      method: 'POST', body: { type: 'recovery', token_hash: tokenHash },
+    });
+    if (status === 200) return toSession(data);
+    throw recoveryFailure(status, data);
+  }
+
+  /** Confere no servidor o token do link e devolve o e-mail da conta. */
+  async function getUser(accessToken) {
+    const { status, data } = await request('/auth/v1/user', { token: accessToken });
+    if (status === 200 && data && typeof data === 'object') {
+      return { email: typeof data.email === 'string' ? data.email : '' };
+    }
+    throw recoveryFailure(status, data);
+  }
+
+  async function updatePassword(accessToken, password) {
+    const { status, data } = await request('/auth/v1/user', { method: 'PUT', token: accessToken, body: { password } });
+    if (status !== 200) throw recoveryFailure(status, data);
+    return { ok: true };
+  }
+
+  /** Revoga os refresh tokens de todos os aparelhos. */
+  async function signOutEverywhere(accessToken) {
+    const { status } = await request('/auth/v1/logout?scope=global', { method: 'POST', token: accessToken });
+    if (status < 200 || status >= 300) throw new AuthError('bad_response');
+    return { ok: true };
+  }
+
+  return { signUp, signIn, refresh, recover, signOut, verifyRecovery, getUser, updatePassword, signOutEverywhere };
 }
 
 module.exports = { createAuthClient, createRequester, AuthError, userIdFromToken, MESSAGES };

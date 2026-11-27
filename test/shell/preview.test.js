@@ -144,10 +144,10 @@ test('o trilho rola na vertical sem cortar as dicas (dica flutuante fora do tril
 });
 
 test('o build do Netlify leva todo arquivo que a página carrega', () => {
-  const { RENDERER_CSS, RENDERER_JS, RENDERER_HEAD_JS, RENDERER_ASSETS } = require('../../scripts/build-preview');
+  const { RENDERER_CSS, RENDERER_JS, RENDERER_HEAD_JS, RENDERER_TAIL_JS, RENDERER_ASSETS } = require('../../scripts/build-preview');
   const html = fs.readFileSync(path.join(RENDERER, 'index.html'), 'utf8');
   const refs = [...html.matchAll(/(?:src|href)="([a-z/0-9-]+\.(?:js|css|svg|png))"/g)].map((m) => m[1]).filter((r) => !r.startsWith('vendor/'));
-  const listed = [...RENDERER_CSS, ...RENDERER_HEAD_JS, ...RENDERER_JS, 'app.js', ...RENDERER_ASSETS];
+  const listed = [...RENDERER_CSS, ...RENDERER_HEAD_JS, ...RENDERER_JS, 'app.js', ...RENDERER_TAIL_JS, ...RENDERER_ASSETS];
   for (const r of refs) assert.ok(listed.includes(r), r + ' fora da lista do build');
   for (const a of RENDERER_ASSETS) assert.ok(fs.existsSync(path.join(RENDERER, a)), a + ' não existe');
   const netlify = fs.readFileSync(path.join(ROOT, 'scripts', 'build-netlify.js'), 'utf8');
@@ -190,7 +190,8 @@ test('tema Meia-Noite (AMOLED) com as cores pedidas e sem flash ao abrir', () =>
   assert.ok(boot > 0 && boot < html.indexOf('<link rel="stylesheet"') && boot < html.indexOf('</head>'), 'theme-boot no <head> antes do CSS');
   const bootJs = fs.readFileSync(path.join(RENDERER, 'theme-boot.js'), 'utf8');
   assert.match(bootJs, /localStorage\.getItem\('lumenex-theme'\)/);
-  assert.match(bootJs, /'dark' \|\| t === 'midnight' \|\| t === 'light'|t === 'dark' \|\| t === 'midnight' \|\| t === 'light'/);
+  assert.match(bootJs, /themes\.has\(t\) \? t : themes\.fallback/);
+  assert.ok(html.indexOf('<script src="themes.js"></script>') < boot, 'registro de temas antes do theme-boot');
   const shell = fs.readFileSync(path.join(RENDERER, 'shell.js'), 'utf8');
   assert.match(shell, /localStorage\.setItem\('lumenex-theme', theme\)/);
   assert.match(css, /html \{[^}]*background: var\(--rail-bg\)/, 'html pinta o fundo do tema antes do body');

@@ -4,6 +4,7 @@
 // guardadas no store do computador (ou localStorage na versão web). Nada aqui é segredo.
 
 const { UserInputError } = require('./controller');
+const { THEME_IDS, DEFAULT_THEME } = require('../core/themes');
 
 const TARGET_RE = /^[cds]:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const DEVICE_RE = /^[A-Za-z0-9+/=_.:-]{1,200}$/;
@@ -19,7 +20,7 @@ function defaults() {
       sensitivity: -50, autoSensitivity: true, noiseSuppression: true, echoCancellation: true,
       inputVolume: 100, outputVolume: 100, cameraDeviceId: 'default',
     },
-    appearance: { theme: 'dark', fontScale: 100, compact: false },
+    appearance: { theme: DEFAULT_THEME, fontScale: 100, compact: false },
   };
 }
 
@@ -37,7 +38,7 @@ const SCHEMA = {
     sensitivity: intIn(-100, 0), autoSensitivity: bool, noiseSuppression: bool, echoCancellation: bool,
     inputVolume: intIn(0, 200), outputVolume: intIn(0, 200),
   },
-  appearance: { theme: oneOf('dark', 'midnight', 'light'), fontScale: intIn(80, 130), compact: bool },
+  appearance: { theme: oneOf(...THEME_IDS), fontScale: intIn(80, 130), compact: bool },
 };
 
 function isPlain(o) {
@@ -105,6 +106,8 @@ function createPrefs({ store = null } = {}) {
   let nav = raw && isPlain(raw._nav) ? raw._nav : null;
   // Etapa 7: este aparelho já escolheu um tema? (senão, vale o tema salvo na conta)
   let themeHere = Boolean(raw && raw._themeHere === true);
+  // Quem nunca escolheu um tema passa a ver o padrão atual (o antigo 'dark' era só o padrão gravado).
+  if (!themeHere && prefs.appearance.theme === 'dark') prefs.appearance.theme = DEFAULT_THEME;
 
   function persist() {
     if (!store) return;

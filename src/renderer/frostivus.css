@@ -1,0 +1,115 @@
+/* ==========================================================================
+   Tema Frostivus. Só aparência: nenhuma regra aqui muda layout ou navegação.
+   Paleta: #05070D #080F20 #48BFFF #007BFF #E4F4FF #FF391C #873DFF #C5A05C
+   ========================================================================== */
+[data-theme="frostivus"] {
+  --bg: #05070d;
+  --bg-glow: #080f20;
+  --surface: rgba(9, 16, 34, 0.9);
+  --surface-2: rgba(18, 30, 60, 0.82);
+  --surface-3: #1a2a50;
+  --border: rgba(110, 170, 240, 0.2);
+  --border-strong: rgba(140, 196, 255, 0.4);
+  --text: #e4f4ff;
+  --text-muted: #b3c6e4;
+  --text-faint: #96a9ca;
+  --brand-gold: #c5a05c;
+  --brand-gold-soft: #e6cd94;
+  --brand-red: #ff391c;
+  --ghost: #48bfff;
+  --ghost-strong: #2aa2e8;
+  --violet: #b690ff;
+  --on-accent: #03101f;
+  --info: #8fc6ff;
+  --rail-bg: rgba(5, 7, 13, 0.7);
+  --sidebar-bg: rgba(8, 15, 32, 0.72);
+  --user-bg: rgba(5, 9, 20, 0.84);
+  --main-bg: rgba(7, 12, 28, 0.5);
+  --members-bg: rgba(8, 15, 32, 0.68);
+  --hover: rgba(72, 191, 255, 0.1);
+  --active: rgba(72, 191, 255, 0.18);
+  --msg-hover: rgba(72, 191, 255, 0.07);
+  --dnd-line: #48bfff;
+}
+html[data-theme="frostivus"] { background: #05070d; }
+[data-theme="frostivus"] body { background: transparent; isolation: auto; }
+
+/* ---- Cenário (atrás de tudo; nunca recebe cliques) ------------------------ */
+.lx-scene { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; background: #05070d; contain: strict; }
+.lx-art { position: absolute; left: -1%; width: 102%; height: 100%; object-fit: cover; object-position: 50% 100%; opacity: 0; transition: opacity 600ms ease; }
+.lx-art.is-ready { opacity: 1; }
+.lx-canvas { position: absolute; inset: 0; }
+.lx-canvas-front { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
+.lx-canvas-front[hidden] { display: none; }
+.lx-rays {
+  position: absolute; top: -20%; left: 18%; width: 64%; height: 110%;
+  background: conic-gradient(from 150deg at 50% 0%, transparent 0deg, rgba(135, 61, 255, 0.13) 8deg, transparent 16deg,
+    rgba(72, 191, 255, 0.12) 28deg, transparent 38deg, rgba(228, 244, 255, 0.08) 48deg, transparent 60deg);
+  opacity: 0.8;
+}
+.lx-fog {
+  position: absolute; left: -50%; width: 200%; height: 34%; bottom: 6%;
+  background:
+    radial-gradient(ellipse 18% 40% at 20% 60%, rgba(130, 170, 255, 0.2), transparent 70%),
+    radial-gradient(ellipse 22% 36% at 48% 50%, rgba(135, 61, 255, 0.16), transparent 70%),
+    radial-gradient(ellipse 18% 42% at 78% 62%, rgba(72, 191, 255, 0.18), transparent 70%);
+  will-change: transform;
+  animation: lx-drift 46s ease-in-out infinite alternate;
+}
+.lx-fog-b { bottom: -10%; animation-duration: 64s; animation-direction: alternate-reverse; opacity: 0.8; }
+@keyframes lx-drift { from { transform: translate3d(-9%, 0, 0); } to { transform: translate3d(9%, 0, 0); } }
+[data-fx="off"] .lx-fog, [data-fx="low"] .lx-fog { animation: none; will-change: auto; }
+
+/* ---- Painéis, bordas congeladas e reflexos -------------------------------- */
+[data-theme="frostivus"] .rail { box-shadow: inset -1px 0 0 rgba(150, 205, 255, 0.18); }
+[data-theme="frostivus"] .sidebar { box-shadow: inset 0 1px 0 rgba(228, 244, 255, 0.2), inset -1px 0 0 rgba(150, 205, 255, 0.16); }
+[data-theme="frostivus"] .members { box-shadow: inset 1px 0 0 rgba(150, 205, 255, 0.18), inset 18px 0 40px -34px rgba(72, 191, 255, 0.6); }
+[data-theme="frostivus"] .sidebar-title { color: var(--brand-gold-soft); }
+
+/* Vidro escuro só onde a área é pequena (desfoque em painel inteiro custaria caro sobre animação). */
+[data-theme="frostivus"] :is(.dialog, .gc-dialog, .vc-dialog) {
+  background: linear-gradient(165deg, rgba(20, 34, 70, 0.93), rgba(6, 10, 24, 0.95));
+  border-color: rgba(160, 210, 255, 0.45);
+  box-shadow: inset 0 1px 0 rgba(228, 244, 255, 0.35), 0 0 0 1px rgba(5, 7, 13, 0.8), 0 18px 60px rgba(0, 0, 0, 0.6), 0 0 44px rgba(0, 123, 255, 0.22);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+}
+[data-theme="frostivus"] :is(.dialog, .gc-dialog, .vc-dialog)::backdrop { background: rgba(3, 5, 12, 0.66); }
+[data-theme="frostivus"] .dialog-title { color: var(--brand-gold-soft); }
+
+/* ---- Botões ---------------------------------------------------------------- */
+[data-theme="frostivus"] .btn { transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease); }
+[data-theme="frostivus"] .btn:hover:not(:disabled) { background: #1f3463; border-color: #7fc8ff; box-shadow: 0 0 16px rgba(72, 191, 255, 0.35); }
+[data-theme="frostivus"] .btn-primary {
+  background: linear-gradient(180deg, #0a6fe0, #05489a); border-color: #6cc4ff; color: #fff;
+  box-shadow: inset 0 1px 0 rgba(228, 244, 255, 0.35), 0 0 12px rgba(0, 123, 255, 0.3);
+}
+[data-theme="frostivus"] .btn-primary:hover:not(:disabled) { background: linear-gradient(180deg, #0f7af0, #0653ad); border-color: #b8e4ff; box-shadow: 0 0 22px rgba(72, 191, 255, 0.55); }
+[data-theme="frostivus"] .btn-primary:disabled { background: var(--surface-3); border-color: var(--border-strong); color: var(--text-muted); box-shadow: none; }
+[data-theme="frostivus"] :is(.btn-danger, .btn-quiet-danger):hover:not(:disabled) { background: rgba(255, 57, 28, 0.16); box-shadow: 0 0 16px rgba(255, 57, 28, 0.35); }
+[data-theme="frostivus"] .btn-danger-solid { background: #b3200c; }
+
+/* Item atual da navegação em vermelho incandescente, como no conceito aprovado */
+[data-theme="frostivus"] .sidebar [aria-current="page"] {
+  background: linear-gradient(90deg, rgba(190, 30, 36, 0.62), rgba(110, 16, 40, 0.42));
+  box-shadow: inset 0 0 0 1px rgba(255, 96, 76, 0.55), 0 0 14px rgba(255, 57, 28, 0.25);
+  color: #fff;
+}
+[data-theme="frostivus"] .rail-btn:hover { box-shadow: 0 0 16px rgba(72, 191, 255, 0.5); }
+[data-theme="frostivus"] .rail-btn[aria-current="page"] { box-shadow: inset 0 0 0 2px #48bfff, 0 0 16px rgba(72, 191, 255, 0.45); }
+[data-theme="frostivus"] :is(input, textarea, select):focus-visible { box-shadow: 0 0 0 2px #48bfff, 0 0 18px rgba(72, 191, 255, 0.4); }
+
+[data-theme="frostivus"] .gs-root { background: rgba(5, 8, 18, 0.9); }
+
+[data-theme="frostivus"] .ftab[aria-selected="true"] { background: rgba(0, 123, 255, 0.28); color: #fff; box-shadow: inset 0 0 0 1px rgba(72, 191, 255, 0.55); }
+[data-theme="frostivus"] .ftab-add, [data-theme="frostivus"] .ftab-add[aria-selected="true"] {
+  background: linear-gradient(180deg, #a8191f, #6e1020); color: #fff; box-shadow: inset 0 0 0 1px rgba(255, 96, 76, 0.7), 0 0 14px rgba(255, 57, 28, 0.3);
+}
+
+/* Telas cheias (configurações) e vídeo: fundo firme, para leitura e para não competir com a imagem */
+[data-theme="frostivus"] .vc-tile-stream, [data-theme="frostivus"] .vc-media { background-color: #000; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lx-fog { animation: none; }
+  .lx-art { transition: none; }
+}

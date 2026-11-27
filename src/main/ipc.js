@@ -15,6 +15,8 @@ const CHANNELS = Object.freeze({
   signIn: 'gr:auth:signIn',
   signOut: 'gr:auth:signOut',
   recover: 'gr:auth:recover',
+  resetPassword: 'gr:auth:resetPassword',
+  dismissRecovery: 'gr:auth:dismissRecovery',
   updateProfile: 'gr:profile:update',
   deleteAccount: 'gr:account:delete',
   groupCreate: 'gr:group:create',
@@ -114,6 +116,12 @@ function validateRecoverPayload(p) {
   if (!checkObject(p, ['email'], [], { email: MAX_EMAIL })) return null;
   if (typeof p.email !== 'string') return null;
   return { email: p.email };
+}
+
+function validateNewPasswordPayload(p) {
+  if (!checkObject(p, ['password'], [], { password: MAX_PASSWORD })) return null;
+  if (typeof p.password !== 'string') return null;
+  return { password: p.password };
 }
 
 function validateProfilePayload(p) {
@@ -271,6 +279,8 @@ function buildHandlers(controller, {
     [CHANNELS.signIn]: wrapHandler(validateCredentialsPayload, viaAccount((d) => account.signIn(d))),
     [CHANNELS.signOut]: wrapHandler(validateEmptyPayload, viaAccount(() => account.signOut())),
     [CHANNELS.recover]: wrapHandler(validateRecoverPayload, viaAccount((d) => account.recover(d))),
+    [CHANNELS.resetPassword]: wrapHandler(validateNewPasswordPayload, viaAccount((d) => account.resetPassword(d))),
+    [CHANNELS.dismissRecovery]: wrapHandler(validateEmptyPayload, viaAccount(() => account.dismissRecovery())),
     [CHANNELS.updateProfile]: wrapHandler(validateProfilePayload, viaAccount(async (d) => {
       const extended = ['username', 'about', 'avatarColor'].some((k) => k in d);
       if (app && getMode() === 'v3') return app.updateProfile(d);

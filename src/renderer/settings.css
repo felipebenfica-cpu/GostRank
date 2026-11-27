@@ -249,7 +249,8 @@ html.gs-open { overflow: hidden; }
 .gs-radio-title { font-weight: 600; }
 .gs-radios-compact .gs-radio { padding: var(--space-2) var(--space-3); }
 
-.gs-themes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.gs-themes { grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); }
+.gs-theme-swatch[data-t="frostivus"] { background: linear-gradient(160deg, #05070d 0 25%, #173a86 25% 55%, #873dff 55% 68%, #ff391c 68% 76%, #48bfff 76%); }
 .gs-themes .gs-radio { flex-direction: column; align-items: flex-start; }
 .gs-theme-swatch { display: block; width: 100%; height: 56px; border-radius: 6px; border: 1px solid var(--border-strong); }
 .gs-theme-swatch[data-t="dark"] { background: linear-gradient(90deg, #07090f 0 18%, #0e111c 18% 42%, #131726 42%); }
