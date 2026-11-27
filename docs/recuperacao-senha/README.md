@@ -39,6 +39,10 @@ Não há mudança de banco nesta entrega.
 - Código em produção antes: commit `ef43cb68cb4ec1953229948e26b731abe100555c` (branch `restore/antes-frostivus`).
 - Deploy Netlify anterior: `6b01e3812052471d148d1e8b`
   (https://6b01e3812052471d148d1e8b--lumenex.netlify.app).
-- Esta versão foi publicada direto no Netlify, sem mesclar em `etapa-2-grupo-voz`. Mesclar nessa branch
-  também gera um novo `.exe`, que os aplicativos de Windows instalados baixam sozinhos. Enquanto não houver
-  a mescla, um novo deploy a partir de `etapa-2-grupo-voz` **substitui** o site pela versão antiga.
+- **Estado: ainda NÃO publicada.** Em 27/11/2026 o Netlify recusou o deploy `6b08f6fcc205ee7ce80203d8` com
+"Skipped due to account credit usage exceeded". A produção continua no commit `ef43cb6`.
+
+Para publicar quando houver créditos: deploy do código desta branch (`feat/recuperacao-senha-frostivus`) no
+site `lumenex`. Mesclar em `etapa-2-grupo-voz` também gera um novo `.exe`, que os aplicativos de Windows
+instalados baixam sozinhos; é uma decisão separada. Depois de publicar sem mesclar, um novo deploy a partir
+de `etapa-2-grupo-voz` substitui o site pela versão antiga.
