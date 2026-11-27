@@ -124,6 +124,13 @@ function buildWeb({ outDir = path.join(ROOT, 'dist'), log = console.log } = {}) 
   copy(path.join(RENDERER, 'brand', 'favicon-32.png'), path.join(outDir, 'favicon.png'));
   checkRefs(html, outDir);
   fs.writeFileSync(path.join(outDir, 'index.html'), html, 'utf8');
+  const publicConfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.public.json'), 'utf8'));
+  for (const name of ['auth-return.html', 'auth-return.css']) {
+    copy(path.join(ROOT, 'src', 'web', name), path.join(outDir, name));
+  }
+  const authPage = fs.readFileSync(path.join(ROOT, 'src', 'web', 'auth-return.js'), 'utf8');
+  if (!authPage.includes("'sb_publishable_'")) throw new Error('Marcador da chave pública ausente');
+  fs.writeFileSync(path.join(outDir, 'auth-return.js'), authPage.replace("'sb_publishable_'", JSON.stringify(publicConfig.anonKey)), 'utf8');
   fs.writeFileSync(path.join(outDir, '_headers'), headersFile(supabaseOrigin()), 'utf8');
   log('✓ dist/ pronto (versão web real)');
   return outDir;
