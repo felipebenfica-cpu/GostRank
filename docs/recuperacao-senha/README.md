@@ -36,7 +36,7 @@ No Netlify: **Deploys > deploy anterior > Publish deploy**. No Git: reverter o c
 Não há mudança de banco nesta entrega.
 
 ## Ponto de restauração desta entrega (27/11/2026)
-- Código em produção antes: commit `ef43cb68cb4ec1953229948e26b731abe100555c` (tag `restore/antes-frostivus`).
+- Código em produção antes: commit `ef43cb68cb4ec1953229948e26b731abe100555c` (branch `restore/antes-frostivus`).
 - Deploy Netlify anterior: `6b01e3812052471d148d1e8b`
   (https://6b01e3812052471d148d1e8b--lumenex.netlify.app).
 - Esta versão foi publicada direto no Netlify, sem mesclar em `etapa-2-grupo-voz`. Mesclar nessa branch
