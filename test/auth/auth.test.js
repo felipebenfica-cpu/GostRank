@@ -13,7 +13,7 @@ test('cadastro: POST /auth/v1/signup com cabeçalhos públicos, resposta needsCo
   const r = await mk(f).signUp({ email: 'ana@example.com', password: 'Segredo!Forte9' });
   assert.deepEqual(r, { needsConfirmation: true });
   const c = f.calls[0];
-  assert.equal(c.url, `${URL_OK}/auth/v1/signup`);
+  assert.equal(c.url, `${URL_OK}/auth/v1/signup?redirect_to=${encodeURIComponent('https://lumenex.netlify.app/confirm-email')}`);
   assert.equal(c.init.method, 'POST');
   assert.equal(c.init.headers.apikey, KEY);
   assert.equal(c.init.headers.Authorization, `Bearer ${KEY}`);
@@ -91,7 +91,7 @@ test('renovação de token', async () => {
 test('recuperação de senha: sempre sucesso (exceto sem conexão)', async () => {
   const f = fakeFetch({ status: 200, body: {} });
   assert.deepEqual(await mk(f).recover({ email: 'a@b.co' }), { ok: true });
-  assert.equal(f.calls[0].url, `${URL_OK}/auth/v1/recover`);
+  assert.equal(f.calls[0].url, `${URL_OK}/auth/v1/recover?redirect_to=${encodeURIComponent('https://lumenex.netlify.app/reset-password')}`);
   assert.deepEqual(await mk(fakeFetch({ status: 404, body: { msg: 'User not found' } })).recover({ email: 'x@y.co' }), { ok: true });
   assert.deepEqual(await mk(fakeFetch({ status: 429, body: {} })).recover({ email: 'x@y.co' }), { ok: true });
   assert.deepEqual(await mk(fakeFetch({ status: 500, body: 'x' })).recover({ email: 'x@y.co' }), { ok: true });

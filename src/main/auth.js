@@ -16,6 +16,7 @@ const MESSAGES = Object.freeze({
 });
 
 const MAX_BODY_CHARS = 1024 * 1024;
+const SITE_URL = 'https://lumenex.netlify.app';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 class AuthError extends Error {
@@ -141,7 +142,7 @@ function createAuthClient({ fetchImpl, supabaseUrl, anonKey, now = () => Date.no
   }
 
   async function signUp({ email, password }) {
-    const { status, data } = await request('/auth/v1/signup', { method: 'POST', body: { email, password } });
+    const { status, data } = await request('/auth/v1/signup?redirect_to=' + encodeURIComponent(SITE_URL + '/confirm-email'), { method: 'POST', body: { email, password } });
     if (status >= 200 && status < 300) return { needsConfirmation: true };
     const code = errorCodeOf(data);
     if (code === 'weak_password') throw new AuthError('weak_password');
@@ -169,7 +170,7 @@ function createAuthClient({ fetchImpl, supabaseUrl, anonKey, now = () => Date.no
 
   async function recover({ email }) {
     try {
-      await request('/auth/v1/recover', { method: 'POST', body: { email } });
+      await request('/auth/v1/recover?redirect_to=' + encodeURIComponent(SITE_URL + '/reset-password'), { method: 'POST', body: { email } });
     } catch (err) {
       // Só falha de conexão aparece; respostas do servidor nunca revelam se a conta existe.
       if (err instanceof AuthError && (err.code === 'network' || err.code === 'timeout')) throw err;

@@ -1,0 +1,9 @@
+:root { color-scheme: dark; font: 16px system-ui, sans-serif; background: #0b0b16; color: #f0eefb; }
+body { min-height: 100vh; display: grid; place-items: center; margin: 0; padding: 1rem; box-sizing: border-box; }
+main { width: min(100%, 430px); padding: 2rem; border: 1px solid #514485; border-radius: 18px; background: #161425; box-sizing: border-box; }
+h1 { color: #d6bdff; margin-top: 0; }
+form { display: grid; gap: .75rem; }
+input { box-sizing: border-box; width: 100%; font: inherit; color: inherit; background: #25213c; border: 1px solid #8678ab; border-radius: 8px; padding: .75rem; }
+button { font: inherit; color: #110b20; background: #d6bdff; border: 0; border-radius: 8px; padding: .75rem 1rem; cursor: pointer; margin: .5rem 0; }
+a { color: #d6bdff; }
+[hidden] { display: none !important; }
