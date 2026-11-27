@@ -106,12 +106,13 @@ function createPrefs({ store = null } = {}) {
   let nav = raw && isPlain(raw._nav) ? raw._nav : null;
   // Etapa 7: este aparelho já escolheu um tema? (senão, vale o tema salvo na conta)
   let themeHere = Boolean(raw && raw._themeHere === true);
-  // Quem nunca escolheu um tema passa a ver o padrão atual (o antigo 'dark' era só o padrão gravado).
-  if (!themeHere && prefs.appearance.theme === 'dark') prefs.appearance.theme = DEFAULT_THEME;
+  // Uma única vez: quem nunca escolheu um tema passa a ver o padrão atual (o antigo 'dark' era só o
+  // padrão gravado). Depois disso, um 'dark' vindo da conta é respeitado.
+  if (!themeHere && !(raw && raw._themeRev === 2) && prefs.appearance.theme === 'dark') prefs.appearance.theme = DEFAULT_THEME;
 
   function persist() {
     if (!store) return;
-    try { store.save({ ...prefs, _nav: nav, _themeHere: themeHere }); } catch { /* fica só em memória */ }
+    try { store.save({ ...prefs, _nav: nav, _themeHere: themeHere, _themeRev: 2 }); } catch { /* fica só em memória */ }
   }
 
   function get() {

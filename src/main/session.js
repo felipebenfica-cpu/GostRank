@@ -61,7 +61,16 @@ function createSessionManager({ store, auth, now = () => Date.now() } = {}) {
     } catch (err) {
       const code = err && err.code;
       if (code === 'invalid_credentials') {
-        if (current === old) clear();
+        if (current !== old) return null;
+        // Outra aba pode ter entrado de novo: não apagar um login mais novo salvo por ela.
+        let saved = null;
+        try { saved = store.load(); } catch { saved = null; }
+        if (validSession(saved) && saved.refreshToken !== old.refreshToken) {
+          loaded = false;
+          load();
+          return current;
+        }
+        clear();
         return null;
       }
       return old; // rede, timeout, limite ou resposta ruim: mantém a sessão

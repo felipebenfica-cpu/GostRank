@@ -5,6 +5,7 @@
 
 const { validateEmail, validatePassword } = require('../core/credentials');
 const { UserInputError } = require('./controller');
+const { userIdFromToken } = require('./auth');
 
 const MAX_LOGIN_PASSWORD = 128;
 const RECOVER_COOLDOWN_MS = 60 * 1000;
@@ -201,7 +202,7 @@ function createAccountService({
       }
       await auth.updatePassword(mine.accessToken, password);
     } catch (err) {
-      if (err && err.code === 'link_invalid') {
+      if (err && err.code === 'link_invalid' && recovery === mine) {
         recovery = { status: 'invalid' };
         emit();
       }
@@ -209,13 +210,15 @@ function createAccountService({
     }
     let sessionsRevoked = true;
     try { await auth.signOutEverywhere(mine.accessToken); } catch { sessionsRevoked = false; }
-    // Sai também deste navegador: a pessoa entra com a senha nova.
-    if (session.peek()) {
+    // Sai também deste navegador, mas só se a sessão aberta for da MESMA conta do link.
+    const open = session.peek();
+    if (open && open.user.id === userIdFromToken(mine.accessToken)) {
       session.clear();
       cache = null;
       sessionChanged(false);
     }
-    recovery = { status: 'done', email: mine.email, sessionsRevoked };
+    // Se a pessoa fechou a tela no meio, não reabre.
+    if (recovery === mine) recovery = { status: 'done', email: mine.email, sessionsRevoked };
     emit();
     return { ok: true };
   }

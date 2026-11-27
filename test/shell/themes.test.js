@@ -49,3 +49,8 @@ test('index.html não repete nenhum id (um diálogo não pode abrir no lugar de 
   const ids = [...fs.readFileSync(path.join(R, 'index.html'), 'utf8').matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(ids.filter((v, i) => ids.indexOf(v) !== i), []);
 });
+
+test('temas: preto vindo da conta não volta a virar Frostivus ao reabrir', () => {
+  const p = createPrefs({ store: { load: () => ({ appearance: { theme: 'dark' }, _themeHere: false, _themeRev: 2 }), save: () => {} } });
+  assert.equal(p.get().appearance.theme, 'dark');
+});

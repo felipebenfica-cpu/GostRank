@@ -176,7 +176,7 @@ function takeRecoveryLink() {
   const isRecovery = p.get('type') === 'recovery' && (p.has('access_token') || p.has('token_hash'));
   const isError = p.has('error_code') || p.has('error_description');
   if (!isRecovery && !isError) return null;
-  try { window.history.replaceState(null, '', loc.pathname); } catch { loc.hash = ''; }
+  try { window.history.replaceState(null, '', loc.pathname.replace(/^\/+/, '/')); } catch { loc.hash = ''; }
   if (isError) return { error: true };
   return { accessToken: p.get('access_token'), tokenHash: p.get('token_hash') };
 }

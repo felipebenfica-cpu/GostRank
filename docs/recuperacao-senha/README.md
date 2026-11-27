@@ -13,7 +13,7 @@ O do LUMENEX só consome o link quando a senha é enviada, então antivírus que
 
 ## Configuração no painel (projeto `jdipignyikikagjvynve`) — PENDENTE
 1. **Authentication > URL Configuration**
-   - Site URL: `https://lumenex.netlify.app` (o domínio antigo `ghosttouch.netlify.app` responde 404;
+   - Site URL: `https://lumenex.netlify.app`, **sem barra no final** (o domínio antigo `ghosttouch.netlify.app` responde 404;
      se ainda estiver aqui, os links não funcionam e o domínio deve ser removido da lista).
    - Redirect URLs: `https://lumenex.netlify.app/`
 2. **Authentication > Emails > SMTP Settings**: o serviço padrão do Supabase **só entrega para membros da

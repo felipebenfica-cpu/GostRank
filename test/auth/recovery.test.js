@@ -112,3 +112,30 @@ test('senha fraca é recusada antes de ir ao servidor; fechar descarta o link', 
   await env.account.dismissRecovery();
   assert.equal(env.account.getAuthView().recovery, undefined);
 });
+
+test('link de outra conta não derruba a sessão aberta neste navegador', async () => {
+  const other = `${b64({ alg: 'HS256' })}.${b64({ sub: '22222222-2222-4222-8222-222222222222' })}.sig`;
+  const env = setup(OK, { signedIn: true });
+  await env.account.beginRecovery({ accessToken: other });
+  await env.account.resetPassword({ password: STRONG });
+  assert.ok(env.stored());
+  assert.deepEqual(env.changes, []);
+});
+
+test('fechar a tela durante o envio não a reabre', async () => {
+  const env = setup(OK);
+  await env.account.beginRecovery({ accessToken: JWT });
+  const pending = env.account.resetPassword({ password: STRONG });
+  await env.account.dismissRecovery();
+  await pending;
+  assert.equal(env.account.getAuthView().recovery, undefined);
+});
+
+test('renovação recusada numa aba antiga não apaga o login mais novo salvo por outra', async () => {
+  const mk = (r) => ({ version: 1, accessToken: 'a', refreshToken: r, expiresAt: 1, user: { id: UID, email: 'e@x.com' } });
+  let stored = mk('velho');
+  const auth = { refresh: async () => { stored = { ...mk('novo'), expiresAt: 9e9 }; throw Object.assign(new Error('x'), { code: 'invalid_credentials' }); } };
+  const s = createSessionManager({ auth, store: { load: () => stored, save: () => {}, clear: () => { stored = null; } } });
+  assert.equal((await s.get()).refreshToken, 'novo');
+  assert.ok(stored);
+});

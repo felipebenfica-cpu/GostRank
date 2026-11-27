@@ -620,7 +620,7 @@
     signup: { dlg: $('dlg-signup'), form: $('form-signup'), email: $('signup-email'), pw: $('signup-password'), pw2: $('signup-confirm'), error: $('signup-error'), submit: $('signup-submit'), label: 'Criar conta', busy: 'Criando…', fields: $('signup-fields'), done: $('signup-done'), cancel: $('signup-cancel'), next: $('signup-to-signin') },
     recover: { dlg: $('dlg-recover'), form: $('form-recover'), email: $('recover-email'), error: $('recover-error'), submit: $('recover-submit'), label: 'Enviar link', busy: 'Enviando…', fields: $('recover-fields'), done: $('recover-done'), cancel: $('recover-cancel'), next: $('recover-to-signin') },
     account: { dlg: $('dlg-account'), form: $('form-account'), nick: $('account-nick'), email: $('account-email'), error: $('account-error'), saved: $('account-saved'), submit: $('account-save'), label: 'Salvar', busy: 'Salvando…', signout: $('btn-signout'), del: $('btn-delete-account') },
-    newpw: { dlg: $('dlg-newpw'), form: $('form-newpw'), pw: $('newpw-password'), pw2: $('newpw-confirm'), error: $('newpw-error'), submit: $('newpw-submit'), label: 'Salvar nova senha', busy: 'Salvando…' },
+    newpw: { dlg: $('dlg-newpw'), form: $('form-newpw'), pw: $('newpw-password'), pw2: $('newpw-confirm'), error: $('newpw-error'), submit: $('newpw-submit'), label: 'Salvar nova senha', busy: 'Salvando…', cancel: $('newpw-cancel') },
     del: { dlg: $('dlg-delete-account'), form: $('form-delete-account'), error: $('delete-account-error'), submit: $('delete-account-submit'), label: 'Sim, apagar minha conta', busy: 'Apagando…' }
   };
 
@@ -651,6 +651,7 @@
     d.submit.textContent = busy ? d.busy : d.label;
     if (busy) d.form.setAttribute('aria-busy', 'true');
     else d.form.removeAttribute('aria-busy');
+    if (d.cancel && d === ac.newpw) d.cancel.disabled = busy;
     if (d.signout) d.signout.disabled = busy;
     if (d.del) d.del.disabled = busy;
   }
@@ -829,6 +830,7 @@
     }
     if (status === resetShown) return;
     resetShown = status;
+    $('dlg-newpw-title').textContent = status === 'invalid' ? 'Link expirado' : 'Criar nova senha';
     show($('newpw-checking'), status === 'checking');
     show($('newpw-invalid'), status === 'invalid');
     show($('newpw-done'), status === 'done');
@@ -866,6 +868,8 @@
     });
   }
   ac.newpw.pw.addEventListener('input', updateStrength);
+  // Enquanto salva, Esc não fecha (a troca já está a caminho do servidor)
+  ac.newpw.dlg.addEventListener('cancel', function (ev) { if (ac.newpw.submit.disabled) ev.preventDefault(); });
   $('newpw-again').addEventListener('click', function () { leaveRecovery(ac.recover); });
   $('newpw-signin').addEventListener('click', function () { leaveRecovery(ac.signin); });
   // Esc ou Cancelar: descarta o link aberto
